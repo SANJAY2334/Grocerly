@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #F5F5F0;
+    --foreground: #111713;
+    
+    --surface: #FFFFFF;
+    --surface-muted: #EDE9DD;
+    --surface-elevated: #FAFAF7;
+
+    --ink: #111713;
+    --ink-muted: #68736C;
+    --ink-subtle: #9BA39E;
+
+    --forest: #183B2B;
+    --forest-dark: #0F271C;
+    --forest-light: #24543E;
+
+    --lime: #C8E27A;
+    --lime-dark: #AFD24F;
+    --lime-light: #DDF09E;
+
+    --cream: #EDE9DD;
+    --cream-dark: #DFD9C8;
+
+    --border: rgba(17, 23, 19, 0.08);
+    --border-subtle: rgba(17, 23, 19, 0.04);
+  }
+
+  * {
+    @apply border-[var(--border)];
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom modern glassmorphism */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.glass-panel-dark {
+  background: rgba(24, 59, 43, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(200, 226, 122, 0.2);
+}
+
+.glass-nav {
+  background: rgba(245, 245, 240, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(17, 23, 19, 0.06);
+}
+
+/* Custom sleek scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(17, 23, 19, 0.15);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(17, 23, 19, 0.3);
+}
+
+/* Hide scrollbar for horizontal rails */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Spatial Card Hover Elevation */
+.spatial-card {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.spatial-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 25px 50px -12px rgba(24, 59, 43, 0.1), 0 0 1px 1px rgba(24, 59, 43, 0.06);
+}
+
+/* Respect user's reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

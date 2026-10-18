@@ -1,0 +1,258 @@
+openapi: 3.1.0
+info:
+  title: Grocerly RESTful E-Commerce & Security API
+  version: 2.0.0
+  description: >
+    Production-ready full-stack grocery e-commerce API with argon2/bcrypt/scrypt authentication,
+    cryptographic OTP email verification, Mongoose/MongoDB data persistence, integer paise pricing engine,
+    and role-based operational fulfillment.
+servers:
+  - url: http://localhost:3000
+    description: Local Development Server
+  - url: https://grocerly.in
+    description: Production Cluster
+
+paths:
+  /api/health:
+    get:
+      summary: System Health & Diagnostics
+      description: Returns health status of primary database, email provider, and system memory.
+      responses:
+        "200":
+          description: All critical subsystems reporting healthy status.
+
+  /api/ready:
+    get:
+      summary: Service Readiness Probe
+      description: Returns readiness check for container orchestrators (Kubernetes / Cloud Run).
+      responses:
+        "200":
+          description: Storage and email dependencies ready.
+        "503":
+          description: Core dependencies unavailable.
+
+  /api/auth/register:
+    post:
+      summary: Register Customer Account
+      description: Validates user details, hashes password, generates 6-digit OTP, and emails verification challenge.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:
+                  type: string
+                  example: Priya Sharma
+                email:
+                  type: string
+                  format: email
+                  example: priya@example.com
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  example: SecurePass@2026!
+                phone:
+                  type: string
+                  example: "+91 98765 43210"
+      responses:
+        "201":
+          description: Account registered and OTP dispatched.
+        "400":
+          description: Validation error or weak password.
+        "409":
+          description: Account with this email already exists.
+
+  /api/auth/verify-email:
+    post:
+      summary: Verify Email via OTP
+      description: Atomically verifies and consumes the 6-digit OTP challenge and activates the user account.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, otp]
+              properties:
+                email:
+                  type: string
+                  format: email
+                otp:
+                  type: string
+                  pattern: "^[0-9]{6}$"
+                  example: "482910"
+      responses:
+        "200":
+          description: Email verified; HttpOnly session established.
+        "400":
+          description: Incorrect, expired, or previously consumed OTP.
+
+  /api/auth/resend-otp:
+    post:
+      summary: Resend Verification Code
+      description: Enforces resend cooldown and generates a new cryptographically secure 6-digit challenge.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                purpose:
+                  type: string
+                  enum: [EMAIL_VERIFICATION, PASSWORD_RESET, SENSITIVE_CHANGE]
+      responses:
+        "200":
+          description: Generic confirmation returned to prevent user enumeration.
+
+  /api/auth/login:
+    post:
+      summary: Authenticate User
+      description: Verifies password hash, checks email verification gate, creates server session, and sets secure HttpOnly cookie.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Authenticated successfully.
+        "401":
+          description: Invalid email or password.
+        "403":
+          description: Email not verified (code EMAIL_NOT_VERIFIED).
+
+  /api/auth/logout:
+    post:
+      summary: Sign Out
+      description: Server-side session revocation and session cookie clearance.
+      responses:
+        "200":
+          description: Signed out successfully.
+
+  /api/auth/me:
+    get:
+      summary: Current User Profile
+      description: Restores user session from HttpOnly cookie or Authorization Bearer header.
+      responses:
+        "200":
+          description: User profile or null if unauthenticated.
+
+  /api/auth/forgot-password:
+    post:
+      summary: Request Password Reset
+      description: Generates a single-use token and sends an email without disclosing whether an account exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Generic dispatch confirmation.
+
+  /api/auth/reset-password:
+    post:
+      summary: Submit New Password
+      description: Consumes the reset token, updates password hash, revokes existing sessions, and emails confirmation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 8
+      responses:
+        "200":
+          description: Password successfully updated.
+
+  /api/auth/change-password:
+    post:
+      summary: Authenticated Password Change
+      description: Requires valid session and current password. Updates password and revokes all other sessions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 8
+      responses:
+        "200":
+          description: Password changed.
+
+  /api/auth/sessions:
+    get:
+      summary: List Active Sessions
+      description: Returns active remote browser sessions for current user.
+      responses:
+        "200":
+          description: List of active sessions.
+
+  /api/cart:
+    get:
+      summary: Get Cart
+      description: Returns server-validated cart items, live stock checks, and integer paise pricing breakdown.
+    post:
+      summary: Sync Cart
+      description: Saves cart items to server for authenticated customer or guest session.
+
+  /api/orders:
+    get:
+      summary: List Orders
+      description: Strict customer-level isolation. Customers see their orders; ADMIN and OPS see all orders.
+    post:
+      summary: Place Order
+      description: Atomic order creation with stock reservation and idempotency enforcement.
+
+  /api/orders/{id}:
+    get:
+      summary: Order Details
+      description: Retrieves snapshot item details, delivery slot, and 4-stage tracking timeline.
+    patch:
+      summary: Transition Order Status
+      description: Advances order along operational state machine or processes customer cancellation.
+
+  /api/admin/users:
+    get:
+      summary: Admin User Directory
+      description: Requires ADMIN role. Excludes password hashes.
+
+  /api/admin/audit-logs:
+    get:
+      summary: Admin Audit Logs
+      description: Requires ADMIN role. Returns structured security and authentication events.

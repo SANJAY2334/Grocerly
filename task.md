@@ -1,0 +1,32 @@
+# Tasks — Grocerly Exact UI/UX Reconstruction & Modernization
+
+- [x] Inspect master reference specification (`media_1790177080161.jpg`) as primary visual source of truth
+- [x] Verify image URL health (19/19 product and recipe Unsplash images verified returning 200 OK)
+- [x] Reconstruct Desktop Hero Section:
+  - [x] Capsule eyebrow `FRESH FOOD • BETTER TOMORROW`
+  - [x] Display headline `Good Food Brighter Days` with wavy lime brush stroke SVG
+  - [x] CTAs `Shop Now →` and `Explore Recipes`
+  - [x] 4 stats (`34+ Fresh Products`, `8 Chef Recipes`, `94.8 Freshness Index`, leaf `Sustainable Packaging`)
+  - [x] Social proof (`Trusted by 10,000+ happy homes`, `★★★★★ 4.8/5`)
+  - [x] 3D Produce Orbit dome with avocado (seed), vine tomato, red onion, lemon, broccoli, and 3 pagination dots
+  - [x] `Live Freshness Index ●` card (94.8 Excellent, 4 progress bars: Produce Quality 97%, Inventory Health 92%, Delivery Readiness 96%, Sustainability 89%)
+  - [x] Teaser card `Fresh Ideas Healthier You`
+  - [x] Script annotation `Good Food Brighter Days ♡` in Caveat font
+- [x] Reconstruct Desktop 3-Panel Middle Row:
+  - [x] Panel 1 (`Shop Fresh`): category pills, left sidebar (Price slider ₹0-₹500, 5-star ratings, switches, sort dropdown), 3x2 product grid with circular `+` buttons and ratings
+  - [x] Panel 2 (`Fresh Tomatoes` Detail): 4 vertical thumbnail selectors, high-res tomato view, ₹40/kg 20% OFF, stepper, add to cart, check badges, tabs, 4 nutrition cards (18 Cal, 0.9g Protein, 3.9g Carbs, 0.2g Fat)
+  - [x] Panel 3 (`Your Cart`): 4 item rows (Tomatoes ₹80, Spinach ₹30, Milk ₹60, Bananas ₹40), `FRESH50` coupon, subtotal ₹210 - ₹50 = ₹160, free delivery meter, `Proceed to Checkout →`
+- [x] Reconstruct 5 Mobile Experience Devices:
+  - [x] Phone 1 (Mobile Home): Dynamic Island, `Good Food Brighter Days`, dual promo cards, 4 category circles, bottom navigation
+  - [x] Phone 2 (Meal Planner): `What are you cooking?`, search bar, Paneer Butter Masala card with ₹386, 5 ingredients, `Add Everything to Basket`
+  - [x] Phone 3 (Checkout): 3-step progress bar, Bruce Wayne address form (`1007, Wayne Manor, Gotham`), `Save & Continue →`
+  - [x] Phone 4 (Order Confirmation): Green checkmark badge, confetti, `GRY-20260923-A8F2`, 4-stage tracking timeline, action buttons
+  - [x] Phone 5 (Dashboard): Bruce Wayne avatar, `Welcome back, Bruce!`, 4 stat cards, 6-month green bar chart
+- [x] Reconstruct Warm Editorial Footer:
+  - [x] Brand text `Grocerly: Good Food. Brighter Days.`
+  - [x] Center capsule `HEALTHY PEOPLE • HEALTHY HOMES • A BRIGHTER TOMORROW`
+  - [x] Right handwritten script `Eat Good Live Better ♡` in Caveat font
+- [x] Production Build & Validation:
+  - [x] `npm run build` compiles with 0 errors across all routes
+  - [x] Production server starts on port 3000
+  - [x] HTTP test verifies all routes responding with STATUS 200
