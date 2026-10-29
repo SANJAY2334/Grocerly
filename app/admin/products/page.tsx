@@ -28,10 +28,11 @@ export default function AdminProductsPage() {
         return;
       }
       const data = await res.json();
-      if (res.ok && data.products) {
-        setProducts(data.products);
+      const productList = data.data?.products || data.products;
+      if (res.ok && productList) {
+        setProducts(productList);
       } else {
-        setError(data.error || "Failed to load product inventory.");
+        setError(data.error?.message || data.error || "Failed to load product inventory.");
       }
     } catch {
       setError("Network error loading inventory.");

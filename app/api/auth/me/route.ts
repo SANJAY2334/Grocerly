@@ -9,7 +9,19 @@ export async function GET(req: Request) {
   try {
     const user = await getSessionUser(req);
     if (!user) {
-      return createSuccessResponse({ user: null });
+      return NextResponse.json(
+        {
+          success: true,
+          user: null,
+          data: { user: null },
+          timestamp: new Date().toISOString(),
+        },
+        {
+          headers: {
+            "Cache-Control": "private, no-cache, no-store, must-revalidate",
+          },
+        }
+      );
     }
 
     await connectToDatabase();
@@ -27,7 +39,19 @@ export async function GET(req: Request) {
         }
       : user;
 
-    return createSuccessResponse({ user: enrichedUser });
+    return NextResponse.json(
+      {
+        success: true,
+        user: enrichedUser,
+        data: { user: enrichedUser },
+        timestamp: new Date().toISOString(),
+      },
+      {
+        headers: {
+          "Cache-Control": "private, no-cache, no-store, must-revalidate",
+        },
+      }
+    );
   } catch (err) {
     return createErrorResponse(err);
   }

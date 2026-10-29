@@ -41,7 +41,7 @@ export default function AdminPage() {
     "inventory"
   );
   const [loading, setLoading] = useState(true);
-  const [isStaff, setIsStaff] = useState(false);
+  const [isStaff, setIsStaff] = useState<boolean>(() => Boolean(user && (user.role === "ADMIN" || user.role === "OPS")));
 
   // Inventory state
   const [products, setProducts] = useState<Product[]>(catalogue);
@@ -66,23 +66,28 @@ export default function AdminPage() {
     setLoading(true);
     try {
       // 1. Verify authenticated user role
-      const meRes = await fetch("/api/auth/me");
+      const meRes = await fetch("/api/auth/me", { cache: "no-store" });
       if (meRes.ok) {
         const meData = await meRes.json();
-        if (meData.user) {
-          setUser(meData.user);
-          if (meData.user.role === "ADMIN" || meData.user.role === "OPS") {
+        const meUser = meData.data?.user || meData.user;
+        if (meUser) {
+          setUser(meUser);
+          if (meUser.role === "ADMIN" || meUser.role === "OPS") {
             setIsStaff(true);
           } else {
             setIsStaff(false);
             setLoading(false);
             return;
           }
+        } else if (user && (user.role === "ADMIN" || user.role === "OPS")) {
+          setIsStaff(true);
         } else {
           setIsStaff(false);
           setLoading(false);
           return;
         }
+      } else if (user && (user.role === "ADMIN" || user.role === "OPS")) {
+        setIsStaff(true);
       } else {
         setIsStaff(false);
         setLoading(false);
@@ -93,9 +98,10 @@ export default function AdminPage() {
       const prodRes = await fetch("/api/products");
       if (prodRes.ok) {
         const prodData = await prodRes.json();
-        if (prodData.products) {
-          setProducts(prodData.products);
-          setCatalogue(prodData.products);
+        const prodList = prodData.data?.products || prodData.products;
+        if (prodList) {
+          setProducts(prodList);
+          setCatalogue(prodList);
         }
       }
 
@@ -103,8 +109,9 @@ export default function AdminPage() {
       const ordRes = await fetch("/api/orders");
       if (ordRes.ok) {
         const ordData = await ordRes.json();
-        if (ordData.orders) {
-          setAllOrders(ordData.orders);
+        const ordList = ordData.data?.orders || ordData.orders;
+        if (ordList) {
+          setAllOrders(ordList);
         }
       }
 
@@ -112,16 +119,17 @@ export default function AdminPage() {
       const invRes = await fetch("/api/admin/inventory");
       if (invRes.ok) {
         const invData = await invRes.json();
-        if (invData.products) setProducts(invData.products);
-        if (invData.coupons) setCoupons(invData.coupons);
-        if (invData.auditLogs) setAuditLogs(invData.auditLogs);
+        const invPayload = invData.data || invData;
+        if (invPayload.products) setProducts(invPayload.products);
+        if (invPayload.coupons) setCoupons(invPayload.coupons);
+        if (invPayload.auditLogs) setAuditLogs(invPayload.auditLogs);
       }
     } catch {
       // Offline fallback
     } finally {
       setLoading(false);
     }
-  }, [setUser, setCatalogue]);
+  }, [user, setUser, setCatalogue]);
 
   useEffect(() => {
     loadAdminData();
