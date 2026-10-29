@@ -10,7 +10,7 @@
 ## 1. Known Technical Debt & Architectural Limitations
 
 ### 1.1 Next.js 14 LTS vs Next.js 15+ Upgrade Blockers
-- **Current State**: Grocerly is pinned to `next@14.2.35` (the latest upstream security-patched release in the Next.js 14 LTS line).
+- **Current State**: Grocerly is pinned to `next@14.2.15` as declared in `package.json` and `package-lock.json`.
 - **Limitation**: Several upstream Next.js security advisories (`GHSA-p293-qw3h-jr36`, `GHSA-2xp9-vwfh-vxw4`, `GHSA-m99w-x7hq-7vfj`) require Next.js $\ge$ 15.5.24 or Next.js 16. Upgrading to Next.js 15 requires React 19, which introduces breaking changes in `@react-three/fiber` (Three.js 3D produce dome) and Framer Motion.
 - **Architectural Mitigations**:
   - Windows-specific RCE is mitigated because production deployments target Linux container environments.

@@ -75,9 +75,9 @@ Every response includes hardened HTTP headers:
 
 ## 4. Upstream Dependency Security & CVE Analysis
 
-Grocerly runs on **Next.js 14.2.35** (the final security-patched LTS release of Next.js 14). Upgrading to Next.js 15+ is currently deferred because it requires React 19, which breaks `@react-three/fiber` in this architecture.
+Grocerly runs on **Next.js 14.2.15** (pinned in `package.json` and `package-lock.json`). Upgrading to Next.js 15+ is currently deferred because it requires React 19, which introduces breaking changes with `@react-three/fiber` in this architecture.
 
-### 4.1 Advisories Resolved in 14.2.35:
+### 4.1 Upstream Advisories Analysis:
 - `GHSA-7m27-7ghc-44w9`: DoS with Server Actions
 - `GHSA-3h52-269p-cp9r`: Origin verification in dev server
 - `GHSA-g5qg-72qw-gw5v` & `GHSA-xv57-4mr9-wg8v`: Image optimization cache key confusion and content injection

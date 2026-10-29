@@ -28,8 +28,9 @@ APP_URL=https://grocerly.in
 MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.grocerly.mongodb.net/?retryWrites=true&w=majority
 MONGODB_DB_NAME=grocerly
 
-# Cryptographic Session & Token Signing Secret (min 32 characters)
-AUTH_SECRET=generate_a_64_character_crypto_random_secret_string_here_abc12345
+# Cryptographic Session & Token Signing Secret (min 32 characters in production)
+# Generate via: openssl rand -hex 32
+AUTH_SECRET=replace_with_openssl_rand_hex_32
 
 # Verification & Challenge Settings
 OTP_TTL_SECONDS=300

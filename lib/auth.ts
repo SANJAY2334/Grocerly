@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { UserRole } from "./types";
+import { config, KNOWN_INSECURE_SECRETS } from "./config";
 
 export const SESSION_COOKIE_NAME = "grocerly_session";
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -13,15 +14,27 @@ export interface SessionPayload {
   exp: number;
 }
 
-function getAuthSecret(): string {
-  const envSecret = process.env.AUTH_SECRET;
-  if (envSecret && envSecret.length >= 32) {
+/**
+ * Retrieves the cryptographic secret used for signing and verifying user session tokens.
+ * In production mode, rejects missing, short (<32 chars), or known development secrets.
+ * 
+ * Session Invalidation and Secret Rotation:
+ * Rotating AUTH_SECRET immediately invalidates all active user sessions across the cluster.
+ * Any token signed with an old or invalid secret fails crypto.timingSafeEqual() verification
+ * in verifySessionToken() and is rejected as null, requiring the client to re-authenticate.
+ */
+export function getAuthSecret(): string {
+  const envSecret = process.env.AUTH_SECRET || config.AUTH_SECRET;
+  if (process.env.NODE_ENV === "production") {
+    if (!envSecret || envSecret.length < 32) {
+      throw new Error("CRITICAL: AUTH_SECRET environment variable (≥32 chars) is required in production.");
+    }
+    if (KNOWN_INSECURE_SECRETS.includes(envSecret)) {
+      throw new Error("CRITICAL: Known development secret cannot be used as AUTH_SECRET in production.");
+    }
     return envSecret;
   }
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("CRITICAL: AUTH_SECRET environment variable (≥32 chars) is required in production.");
-  }
-  return "grocerly-local-dev-hmac-secret-key-2026-do-not-use-in-prod";
+  return envSecret || "grocerly-local-dev-hmac-secret-key-2026-do-not-use-in-prod";
 }
 
 /**

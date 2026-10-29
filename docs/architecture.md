@@ -128,7 +128,7 @@ flowchart TD
 
 | Layer | Component / Library | Pinned Version | Rationale & Responsibility |
 | :--- | :--- | :--- | :--- |
-| **Framework** | `next` | `14.2.35` | Pinned to final security-patched Next.js 14 LTS release. App Router architecture with Route Handlers. |
+| **Framework** | `next` | `14.2.15` | Pinned Next.js 14 LTS release declared in package.json. App Router architecture with Route Handlers. |
 | **Runtime** | `node` | `>=20.17.0` | Node.js LTS engine providing native crypto, fetch, and native test runner (`node --test`). |
 | **UI Library** | `react` / `react-dom` | `18.3.1` | Concurrent React runtime supporting Server Components and Client Components. |
 | **Language** | `typescript` | `5.6.3` | Strict static type safety (`tsc --noEmit` verified with 0 errors). |

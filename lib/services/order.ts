@@ -1,12 +1,24 @@
 import crypto from "crypto";
+import mongoose from "mongoose";
 import { OrderModel } from "@/lib/models/Order";
 import { ProductModel } from "@/lib/models/Product";
 import { Order, OrderStatus, UserRole, PaymentMethod, PaymentStatus } from "@/lib/types";
 import { canTransitionOrderStatus } from "@/lib/order-state-machine";
 import { calculatePricingBreakdown } from "@/lib/pricing";
 import { sendOrderConfirmationEmail, sendOrderStatusUpdateEmail } from "./email";
-import { logAuditEvent } from "@/lib/logging";
+import { logAuditEvent, appLogger } from "@/lib/logging";
 import { connectToDatabase } from "@/lib/db/connection";
+
+function canUseReplicaSetTransactions(): boolean {
+  try {
+    const conn = mongoose.connection as any;
+    const client = typeof conn.getClient === "function" ? conn.getClient() : conn.client;
+    const topology = client?.topology?.description?.type;
+    return topology === "ReplicaSetWithPrimary" || topology === "Sharded" || topology === "LoadBalanced";
+  } catch {
+    return false;
+  }
+}
 
 export async function createNewOrder(params: {
   userId: string;
@@ -37,6 +49,10 @@ export async function createNewOrder(params: {
     }
   }
 
+  if (!params.items || params.items.length === 0) {
+    return { success: false, error: "Cannot create an order with empty items." };
+  }
+
   // 2. Validate Items and Check Stock in ProductModel
   const validProducts = [];
   for (const item of params.items) {
@@ -53,23 +69,7 @@ export async function createNewOrder(params: {
     validProducts.push({ product, quantity: item.quantity });
   }
 
-  // 3. Atomically reserve/decrement stock in ProductModel
-  for (const { product, quantity } of validProducts) {
-    const updated = await ProductModel.findOneAndUpdate(
-      { id: product.id, stock: { $gte: quantity } },
-      { $inc: { stock: -quantity, soldCount: quantity } },
-      { new: true }
-    );
-    if (!updated) {
-      // Rollback previous items if race condition occurred
-      return {
-        success: false,
-        error: `Stock for "${product.name}" was just reserved by another customer. Please refresh cart.`,
-      };
-    }
-  }
-
-  // 4. Authoritative Pricing Calculation
+  // 3. Authoritative Pricing Calculation
   const pricing = calculatePricingBreakdown(
     params.items.map((it) => ({ productId: it.productId, quantity: it.quantity })),
     { couponCode: params.couponCode }
@@ -78,7 +78,7 @@ export async function createNewOrder(params: {
   const orderId = `ORD-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`;
   const nowIso = new Date().toISOString();
 
-  // 5. Construct Order Items with snapshot details
+  // 4. Construct Order Items with snapshot details
   const orderItems = pricing.lineItems.map((li) => ({
     productId: li.productId,
     sku: li.sku,
@@ -97,7 +97,7 @@ export async function createNewOrder(params: {
   const isCod = params.paymentMethod === "COD";
   const initialStatus: OrderStatus = isCod ? "CONFIRMED" : "PENDING_PAYMENT";
 
-  const orderDoc = await OrderModel.create({
+  const orderPayload = {
     id: orderId,
     userId: params.userId,
     customerEmail: params.userEmail,
@@ -141,31 +141,127 @@ export async function createNewOrder(params: {
         actorRole: "CUSTOMER",
       },
     ],
-  });
+  };
 
-  const order = orderDoc.toObject() as unknown as Order;
+  const useReplicaSetTx = canUseReplicaSetTransactions();
 
-  // 6. Audit Log
-  await logAuditEvent({
-    eventType: "ORDER_CREATED",
-    actorId: params.userId,
-    targetType: "Order",
-    targetId: order.id,
-    outcome: "SUCCESS",
-    metadata: {
-      finalPayable: order.total,
-      itemCount: order.items.length,
-      paymentMethod: order.paymentMethod,
-      initialStatus: order.status,
-    },
-  });
+  if (useReplicaSetTx) {
+    const session = await mongoose.startSession();
+    try {
+      session.startTransaction();
 
-  // 7. Send confirmation email (immediate for COD, online payments send on verification)
-  if (params.userEmail && isCod) {
-    sendOrderConfirmationEmail(params.userEmail, params.userName || params.address.fullName, order).catch(() => {});
+      for (const { product, quantity } of validProducts) {
+        const updated = await ProductModel.findOneAndUpdate(
+          { id: product.id, stock: { $gte: quantity } },
+          { $inc: { stock: -quantity, soldCount: quantity } },
+          { new: true, session }
+        );
+        if (!updated) {
+          await session.abortTransaction();
+          return {
+            success: false,
+            error: `Stock for "${product.name}" was just reserved by another customer. Please refresh cart.`,
+          };
+        }
+      }
+
+      const [orderDoc] = await OrderModel.create([orderPayload], { session });
+      await session.commitTransaction();
+
+      const order = orderDoc.toObject() as unknown as Order;
+
+      await logAuditEvent({
+        eventType: "ORDER_CREATED",
+        actorId: params.userId,
+        targetType: "Order",
+        targetId: order.id,
+        outcome: "SUCCESS",
+        metadata: {
+          finalPayable: order.total,
+          itemCount: order.items.length,
+          paymentMethod: order.paymentMethod,
+          initialStatus: order.status,
+          transactionStrategy: "REPLICA_SET_TRANSACTION",
+        },
+      });
+
+      if (params.userEmail && isCod) {
+        sendOrderConfirmationEmail(params.userEmail, params.userName || params.address.fullName, order).catch(() => {});
+      }
+
+      return { success: true, order };
+    } catch (txError) {
+      await session.abortTransaction();
+      appLogger.error({ err: txError }, "ReplicaSet transaction failed during order creation.");
+      throw txError;
+    } finally {
+      await session.endSession();
+    }
   }
 
-  return { success: true, order };
+  // Standalone / Non-ReplicaSet Deployment: Use Compensating Atomic Rollback
+  appLogger.info("MongoDB standalone deployment detected: Using compensating atomic rollback for inventory reservation.");
+  const reservedItems: Array<{ productId: string; quantity: number }> = [];
+
+  try {
+    for (const { product, quantity } of validProducts) {
+      const updated = await ProductModel.findOneAndUpdate(
+        { id: product.id, stock: { $gte: quantity } },
+        { $inc: { stock: -quantity, soldCount: quantity } },
+        { new: true }
+      );
+
+      if (!updated) {
+        // Atomically rollback any previously reserved items in this order
+        for (const res of reservedItems) {
+          await ProductModel.updateOne(
+            { id: res.productId },
+            { $inc: { stock: res.quantity, soldCount: -res.quantity } }
+          );
+        }
+        return {
+          success: false,
+          error: `Stock for "${product.name}" was just reserved by another customer. Please refresh cart.`,
+        };
+      }
+
+      reservedItems.push({ productId: product.id, quantity });
+    }
+
+    const orderDoc = await OrderModel.create(orderPayload);
+    const order = orderDoc.toObject() as unknown as Order;
+
+    await logAuditEvent({
+      eventType: "ORDER_CREATED",
+      actorId: params.userId,
+      targetType: "Order",
+      targetId: order.id,
+      outcome: "SUCCESS",
+      metadata: {
+        finalPayable: order.total,
+        itemCount: order.items.length,
+        paymentMethod: order.paymentMethod,
+        initialStatus: order.status,
+        transactionStrategy: "COMPENSATING_ATOMIC_ROLLBACK",
+      },
+    });
+
+    if (params.userEmail && isCod) {
+      sendOrderConfirmationEmail(params.userEmail, params.userName || params.address.fullName, order).catch(() => {});
+    }
+
+    return { success: true, order };
+  } catch (err) {
+    // If order creation or DB call failed, roll back all reserved items
+    for (const res of reservedItems) {
+      await ProductModel.updateOne(
+        { id: res.productId },
+        { $inc: { stock: res.quantity, soldCount: -res.quantity } }
+      );
+    }
+    appLogger.error({ err }, "Order creation failed; all reserved inventory was rolled back.");
+    throw err;
+  }
 }
 
 export async function fetchOrderById(

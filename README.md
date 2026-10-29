@@ -1,6 +1,6 @@
 # 🥬 Grocerly — Production-Grade Grocery E-Commerce Platform
 
-Grocerly is a full-stack, enterprise-grade online grocery marketplace built with Next.js 14 (App Router, pinned to `14.2.35`), React 18, TypeScript, Tailwind CSS, Framer Motion, Mongoose (MongoDB), Nodemailer, and Pino structured logging.
+Grocerly is a full-stack, enterprise-grade online grocery marketplace built with Next.js 14 (App Router, pinned to `14.2.15`), React 18, TypeScript, Tailwind CSS, Framer Motion, Mongoose (MongoDB), Nodemailer, and Pino structured logging.
 
 ---
 
@@ -43,7 +43,7 @@ Grocerly is a full-stack, enterprise-grade online grocery marketplace built with
 
 | Layer | Technologies |
 |---|---|
-| **Framework** | Next.js 14.2.35 (App Router, Server Components & Route Handlers) |
+| **Framework** | Next.js 14.2.15 (App Router, Server Components & Route Handlers) |
 | **Frontend** | React 18.3.1, TypeScript 5.6.3, Tailwind CSS, Framer Motion, Lucide Icons |
 | **3D Graphics** | Three.js, React Three Fiber, React Three Drei |
 | **State Management**| Zustand 5.0 with local persistence |
@@ -52,7 +52,7 @@ Grocerly is a full-stack, enterprise-grade online grocery marketplace built with
 | **Security & Auth** | Bcrypt (salt 12), Scrypt fallback, HMAC-SHA256 sessions, CSRF headers |
 | **Email Service** | Nodemailer with responsive HTML templates & in-memory test queue |
 | **Logging** | Pino 10.4.0 with structured JSON output and central field redaction |
-| **Testing** | Node.js native test runner (`node:test`), 39 passing unit/integration tests |
+| **Testing** | Node.js native test runner (`node:test`), 53 passing automated tests |
 
 ---
 
@@ -75,15 +75,18 @@ Configure your variables:
 # Application
 NODE_ENV=development
 APP_URL=http://localhost:3000
-AUTH_SECRET=grocerly_super_secure_production_session_signing_secret_2026_dev_seed
+
+# Secret for HMAC session cookies & OTP hashes (min 32 chars in production)
+# Generate via: openssl rand -hex 32
+AUTH_SECRET=replace_with_cryptographically_strong_random_secret_32_chars
 
 # Database
 MONGODB_URI=mongodb://127.0.0.1:27017/grocerly
 MONGODB_DB_NAME=grocerly
 
-# Staff Passwords (Optional; if omitted, seed.ts generates secure random passwords)
-INITIAL_ADMIN_PASSWORD=Admin@Grocerly2026!
-INITIAL_OPS_PASSWORD=Ops@Grocerly2026!
+# Staff Passwords (Optional; if omitted, seed.ts generates secure random passwords logged to console)
+INITIAL_ADMIN_PASSWORD=replace_with_secure_admin_password
+INITIAL_OPS_PASSWORD=replace_with_secure_ops_password
 
 # Email (SMTP)
 SMTP_HOST=smtp.sendgrid.net
@@ -124,7 +127,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the storefront.
 Grocerly includes a comprehensive automated test suite covering all security, auth, OTP, pricing, state machine, and database workflows:
 
 ```bash
-# Run all automated tests (39 passing tests)
+# Run all automated tests (53 passing tests: 39 unit/domain + 14 HTTP route integration tests)
 npm test
 
 # Run TypeScript type check (0 errors)

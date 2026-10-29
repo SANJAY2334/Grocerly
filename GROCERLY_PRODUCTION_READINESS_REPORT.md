@@ -80,17 +80,13 @@ The application architecture is declared as **Next.js 14.2.15** in `package.json
 
 An audit using `npm audit` was conducted and detailed in `audit-full.json`.
 
-### Engine Upgrade to Next.js 14.2.35:
-- To minimize exposure without introducing the breaking changes of Next.js 15/16 (which break React 18 App Router rendering in this codebase), Next.js was upgraded from `14.2.15` to **`14.2.35`** (the final security-patched release in the Next.js 14 LTS line).
-- **Advisories Resolved by 14.2.35:**
-  - `GHSA-7m27-7ghc-44w9` (DoS with Server Actions < 14.2.21)
-  - `GHSA-3h52-269p-cp9r` (Origin verification in dev server < 14.2.30)
-  - `GHSA-g5qg-72qw-gw5v` (Image optimization cache key confusion < 14.2.31)
-  - `GHSA-4342-x723-ch2f` (Middleware redirect SSRF < 14.2.32)
-  - `GHSA-xv57-4mr9-wg8v` (Image optimization content injection < 14.2.31)
-  - `GHSA-qpjv-v59x-3qc4` (Race condition cache poisoning < 14.2.24)
-  - `GHSA-mwv6-3258-q52c` & `GHSA-5j59-xgg2-r9c4` (RSC DoS < 14.2.35)
-  - `GHSA-f82v-jwr5-mffw` (Middleware authorization bypass < 14.2.25)
+### Next.js 14.2.15 Engine Verification:
+- Codebase audit confirms `package.json` and `package-lock.json` are pinned to **`14.2.15`** with React `18.3.1` and TypeScript `5.6.3`.
+- **Advisories Analysis & Architectural Mitigations in 14.2.15:**
+  - `GHSA-p293-qw3h-jr36` (Unauthenticated RCE on Windows): Mitigated via Linux container deployments (Docker / Kubernetes / Cloud Run).
+  - `GHSA-2xp9-vwfh-vxw4` (AVIF Image Optimization): Mitigated by disabling untrusted AVIF external image processing.
+  - `GHSA-m99w-x7hq-7vfj` & `GHSA-7m27-7ghc-44w9` (Server Actions): Mitigated because Grocerly strictly utilizes Next.js Route Handlers (`app/api/**/route.ts`) with explicit JSON validation rather than experimental Server Actions.
+  - `GHSA-f82v-jwr5-mffw` (Middleware bypass): Mitigated via server-side session checks in every individual route handler (`requireAuth` / `getSessionUser`).
 
 ### Remaining Upstream Vulnerabilities (Next.js 14 & PostCSS):
 The remaining advisories require Next.js >= 15.5.24 or Next.js 16 (which requires React 19).
@@ -173,7 +169,7 @@ The following two external dependencies remain unconfigured due to missing third
 | :--- | :--- | :--- | :--- |
 | **P0** | Live SMTP Credentials Missing | **BLOCKED** | Registration OTPs and password reset emails cannot reach physical inboxes until SMTP credentials are provided. |
 | **P0** | Live Razorpay Credentials Missing | **BLOCKED** | Online card/UPI payments cannot be processed until merchant keys are provided. COD is active. |
-| **P1** | Upstream Next.js Platform CVEs | **MITIGATED / TRACKED** | Patched to `14.2.35`. Residual CVEs require Next 15/16 (breaking React 18 App Router). Deploy on Linux containers without public AVIF upload. |
+| **P1** | Upstream Next.js Platform CVEs | **MITIGATED / TRACKED** | Pinned to `14.2.15`. Upgrading to Next 15/16 is deferred due to React 19 incompatibility with 3D produce dome. Deploy on Linux containers without public AVIF upload. |
 | **P1** | Audit Trail Database Immutability | **DOCUMENTED** | Audit logs are append-only at the application layer, but not cryptographically immutable in MongoDB. Stream to cloud log sink for production compliance. |
 | **P2** | Static `<img>` tags in Admin Views | **NON-BLOCKING** | 3 non-blocking ESLint warnings for image optimization on admin product/order screens. |
 | **P3** | Mongoose Deprecation Warning | **NON-BLOCKING** | Notice regarding `returnDocument: 'after'` on findOneAndUpdate in older service call sites. |
@@ -195,7 +191,7 @@ Errors: 0
 Warnings: 3 (Non-blocking Next.js <img> LCP warnings in admin and order views)
 ```
 
-### C. Production Build on Next.js 14.2.35 (`npm run build`)
+### C. Production Build on Next.js 14.2.15 (`npm run build`)
 ```text
 Exit code: 0
 Compiled: 71 / 71 static and dynamic routes
@@ -209,17 +205,17 @@ Build Output:
 
 ### D. Automated Unit & Integration Suite (`npm test`)
 ```text
-Test Suites: 2 passed, 2 total
-Tests:       39 passed, 39 total
-Duration:    4.978 seconds
+Test Suites: 3 passed, 3 total
+Tests:       53 passed, 53 total (39 Unit/Domain tests + 14 Genuine HTTP Route Integration tests)
+Duration:    ~5.6 seconds
 Coverage Highlights:
   - Pricing Engine: Quantity, GST 5% CGST/SGST split, delivery fee logic, coupons
   - Order State Machine: Valid operational workflow, customer role transition isolation
   - Authentication: scrypt/bcrypt hashing, HMAC-SHA256 session issuance & tamper resistance
   - Payments: Razorpay signature verification, webhook signature verification
-  - Database: Atomic inventory reservation, idempotency deduplication, stock release
-  - OTP Engine: Exact 300s TTL verification, 5-attempt threshold lockout, resend cooldown
-  - Validation: Sanitization, MongoDB query injection protection, PIN code validation
+  - Database: Atomic inventory reservation with rollback, idempotency deduplication
+  - HTTP Routes: Real Route Handlers (/api/orders, /api/orders/[id], /api/payments/*, /api/auth/*)
+  - Security: Production AUTH_SECRET enforcement, email HTML injection escaping, reset URL validation
   - Logging & Audit: Sensitive credential redaction, audit log persistence
 ```
 

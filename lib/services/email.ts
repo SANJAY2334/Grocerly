@@ -21,6 +21,9 @@ const sentEmailsTestQueue: SentEmailRecord[] = [];
 let simulateFailureInTest: boolean = false;
 
 export function setSimulateEmailFailureForTest(shouldFail: boolean): void {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SECURITY_VIOLATION: Test hooks are strictly disabled in production mode.");
+  }
   simulateFailureInTest = shouldFail;
 }
 
@@ -158,17 +161,63 @@ export async function checkEmailHealth(): Promise<{
 }
 
 // -----------------------------------------------------------------------------
+// HTML SANITIZATION AND URL VALIDATION
+// -----------------------------------------------------------------------------
+
+/**
+ * Escapes untrusted text for safe insertion into HTML email templates.
+ */
+export function escapeHtml(str: string | undefined | null): string {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/**
+ * Validates password reset URLs against the configured application origin.
+ * Prevents host-header poisoning and open-redirect phishing attacks.
+ */
+export function validateResetUrl(tokenOrUrl: string, expectedOrigin: string = config.APP_URL): string {
+  let token = tokenOrUrl;
+  if (tokenOrUrl.includes("token=")) {
+    try {
+      const parsed = new URL(tokenOrUrl.startsWith("http") ? tokenOrUrl : `http://localhost/${tokenOrUrl}`);
+      token = parsed.searchParams.get("token") || tokenOrUrl;
+    } catch {
+      // fallback to tokenOrUrl
+    }
+  }
+
+  if (tokenOrUrl.startsWith("http://") || tokenOrUrl.startsWith("https://")) {
+    const parsed = new URL(tokenOrUrl);
+    const expected = new URL(expectedOrigin);
+    if (parsed.origin !== expected.origin) {
+      throw new Error(`SECURITY_ALERT: Reset URL origin mismatch. Provided: ${parsed.origin}, expected: ${expected.origin}`);
+    }
+    return tokenOrUrl;
+  }
+
+  const cleanOrigin = expectedOrigin.replace(/\/+$/, "");
+  return `${cleanOrigin}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+// -----------------------------------------------------------------------------
 // BRANDED EMAIL TEMPLATES
 // -----------------------------------------------------------------------------
 
 function renderEmailLayout(title: string, bodyContent: string): string {
+  const safeTitle = escapeHtml(title);
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <title>${safeTitle}</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F8F7F2; margin: 0; padding: 24px; color: #163C29; }
     .card { max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 20px; border: 1px solid rgba(22,60,41,0.08); overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.04); }
@@ -206,13 +255,15 @@ function renderEmailLayout(title: string, bodyContent: string): string {
  * 1. Welcome & Email Verification (OTP)
  */
 export async function sendVerificationOtpEmail(to: string, name: string, otp: string): Promise<void> {
+  const safeName = escapeHtml(name);
+  const safeOtp = escapeHtml(otp);
   const title = "Verify Your Grocerly Account";
   const html = renderEmailLayout(
     title,
     `
-      <h2 style="margin-top:0; color:#163C29;">Welcome to Grocerly, ${name}!</h2>
+      <h2 style="margin-top:0; color:#163C29;">Welcome to Grocerly, ${safeName}!</h2>
       <p>Thank you for joining our fresh farm-to-table grocery platform. Please use the 6-digit one-time verification code below to confirm your email address:</p>
-      <div class="otp-code">${otp}</div>
+      <div class="otp-code">${safeOtp}</div>
       <div class="security-notice">
         <strong>Security Notice:</strong> This OTP is valid for 5 minutes. Never share this code with anyone. Grocerly staff will never ask for your verification code.
       </div>
@@ -232,26 +283,28 @@ export async function sendPasswordResetEmail(
   tokenOrUrl: string,
   maybeToken?: string
 ): Promise<void> {
-  const token = maybeToken || (tokenOrUrl.includes("token=") ? tokenOrUrl.split("token=")[1].split("&")[0] : tokenOrUrl);
-  const resetUrl = tokenOrUrl.startsWith("http") ? tokenOrUrl : `${config.APP_URL}/reset-password?token=${token}`;
+  const rawTokenOrUrl = maybeToken ? `${config.APP_URL}/reset-password?token=${maybeToken}` : tokenOrUrl;
+  const validatedUrl = validateResetUrl(rawTokenOrUrl);
+  const safeName = escapeHtml(name);
+  const safeUrl = escapeHtml(validatedUrl);
 
   const title = "Reset Your Grocerly Password";
   const html = renderEmailLayout(
     title,
     `
       <h2 style="margin-top:0; color:#163C29;">Password Reset Request</h2>
-      <p>Hello ${name},</p>
+      <p>Hello ${safeName},</p>
       <p>We received a request to reset the password associated with your Grocerly account. Click the button below to set a new password:</p>
       <p style="text-align: center;">
-        <a href="${resetUrl}" class="button">Reset My Password →</a>
+        <a href="${safeUrl}" class="button">Reset My Password →</a>
       </p>
-      <p style="font-size: 12px; color: #6b7280;">If the button does not work, copy and paste this link into your browser:<br><a href="${resetUrl}" style="color:#163C29;">${resetUrl}</a></p>
+      <p style="font-size: 12px; color: #6b7280;">If the button does not work, copy and paste this link into your browser:<br><a href="${safeUrl}" style="color:#163C29;">${safeUrl}</a></p>
       <div class="security-notice">
         <strong>Security Notice:</strong> This reset link expires in 15 minutes and can only be used once. If you did not initiate this request, your account is safe and you can ignore this email.
       </div>
     `
   );
-  const text = `Hello ${name},\n\nWe received a request to reset your Grocerly account password. Open this link to reset it:\n${resetUrl}\n\nThis link expires in 15 minutes. If you did not request this, please ignore this email.`;
+  const text = `Hello ${name},\n\nWe received a request to reset your Grocerly account password. Open this link to reset it:\n${validatedUrl}\n\nThis link expires in 15 minutes. If you did not request this, please ignore this email.`;
   await sendEmail({ to, subject: "Reset your Grocerly account password", html, text });
 }
 
@@ -259,12 +312,13 @@ export async function sendPasswordResetEmail(
  * 3. Password Change Confirmation
  */
 export async function sendPasswordChangeConfirmationEmail(to: string, name: string): Promise<void> {
+  const safeName = escapeHtml(name);
   const title = "Password Changed Successfully";
   const html = renderEmailLayout(
     title,
     `
       <h2 style="margin-top:0; color:#163C29;">Your Password Has Been Updated</h2>
-      <p>Hello ${name},</p>
+      <p>Hello ${safeName},</p>
       <p>This is a confirmation that your Grocerly account password was changed on <strong>${new Date().toUTCString()}</strong>.</p>
       <p>All other active sessions have been automatically terminated for your protection.</p>
       <div class="security-notice">
@@ -280,45 +334,54 @@ export async function sendPasswordChangeConfirmationEmail(to: string, name: stri
  * 4. Order Confirmation Email
  */
 export async function sendOrderConfirmationEmail(to: string, name: string, order: Order): Promise<void> {
+  const safeName = escapeHtml(name);
+  const safeOrderId = escapeHtml(order.id);
+  const safeSlot = escapeHtml(order.deliverySlot);
+  const safeStreet = escapeHtml(order.address?.street);
+  const safeCity = escapeHtml(order.address?.city);
+  const safePincode = escapeHtml(order.address?.pincode);
+
   const title = `Order Confirmed: #${order.id}`;
-  const itemsHtml = order.items
+  const itemsHtml = (order.items || [])
     .map(
       (item) => `
       <tr>
         <td style="padding: 8px 0; border-bottom: 1px solid #f0f0eb;">
-          <strong>${item.name}</strong> (${item.unit}) × ${item.quantity}
+          <strong>${escapeHtml(item.name)}</strong> (${escapeHtml(item.unit)}) × ${item.quantity}
         </td>
         <td style="padding: 8px 0; border-bottom: 1px solid #f0f0eb; text-align: right; font-weight: bold;">
-          ₹${item.lineTotal.toFixed(2)}
+          ₹${(item.lineTotal || 0).toFixed(2)}
         </td>
       </tr>
     `
     )
     .join("");
 
+  const finalPayable = (order.pricing?.finalPayable ?? order.total ?? 0).toFixed(2);
+
   const html = renderEmailLayout(
     title,
     `
       <h2 style="margin-top:0; color:#163C29;">Thank you for your order!</h2>
-      <p>Hello ${name},</p>
-      <p>Your grocery order <strong>#${order.id}</strong> has been received and confirmed.</p>
+      <p>Hello ${safeName},</p>
+      <p>Your grocery order <strong>#${safeOrderId}</strong> has been received and confirmed.</p>
       <div style="background:#F8F7F2; border-radius:12px; padding:16px; margin:16px 0;">
         <table style="width:100%; border-collapse: collapse; font-size:13px;">
           ${itemsHtml}
           <tr>
             <td style="padding: 12px 0 4px 0; font-weight: bold; font-size:14px;">Total Payable</td>
             <td style="padding: 12px 0 4px 0; text-align: right; font-weight: 900; font-size:16px; color:#163C29;">
-              ₹${order.pricing.finalPayable.toFixed(2)}
+              ₹${finalPayable}
             </td>
           </tr>
         </table>
       </div>
-      <p><strong>Delivery Slot:</strong> ${order.deliverySlot}</p>
-      <p><strong>Delivery Address:</strong> ${order.address.street}, ${order.address.city}, ${order.address.pincode}</p>
+      <p><strong>Delivery Slot:</strong> ${safeSlot}</p>
+      <p><strong>Delivery Address:</strong> ${safeStreet}, ${safeCity}, ${safePincode}</p>
       <p>Our fulfillment team is carefully preparing your farm-fresh produce with cold-chain packaging.</p>
     `
   );
-  const text = `Hello ${name},\n\nYour order #${order.id} is confirmed! Total: ₹${order.pricing.finalPayable.toFixed(2)}\nDelivery Slot: ${order.deliverySlot}\nAddress: ${order.address.street}, ${order.address.city}, ${order.address.pincode}`;
+  const text = `Hello ${name},\n\nYour order #${order.id} is confirmed! Total: ₹${finalPayable}\nDelivery Slot: ${order.deliverySlot}\nAddress: ${order.address?.street}, ${order.address?.city}, ${order.address?.pincode}`;
   await sendEmail({ to, subject: `Order Confirmed #${order.id} — Grocerly Fresh`, html, text });
 }
 
@@ -326,14 +389,19 @@ export async function sendOrderConfirmationEmail(to: string, name: string, order
  * 5. Order Status Update Email
  */
 export async function sendOrderStatusUpdateEmail(to: string, name: string, order: Order, newStatus: string): Promise<void> {
+  const safeName = escapeHtml(name);
+  const safeOrderId = escapeHtml(order.id);
+  const safeStatus = escapeHtml(newStatus);
+  const safeSlot = escapeHtml(order.deliverySlot);
+
   const title = `Order #${order.id} is now ${newStatus}`;
   const html = renderEmailLayout(
     title,
     `
       <h2 style="margin-top:0; color:#163C29;">Order Status Update</h2>
-      <p>Hello ${name},</p>
-      <p>Your Grocerly order <strong>#${order.id}</strong> has been updated to: <span style="display:inline-block; background:#C8E27A; color:#163C29; padding:4px 12px; border-radius:9999px; font-weight:bold;">${newStatus}</span></p>
-      <p><strong>Delivery Slot:</strong> ${order.deliverySlot}</p>
+      <p>Hello ${safeName},</p>
+      <p>Your Grocerly order <strong>#${safeOrderId}</strong> has been updated to: <span style="display:inline-block; background:#C8E27A; color:#163C29; padding:4px 12px; border-radius:9999px; font-weight:bold;">${safeStatus}</span></p>
+      <p><strong>Delivery Slot:</strong> ${safeSlot}</p>
       <p>You can track the live progress of your delivery directly on your Grocerly dashboard.</p>
     `
   );
@@ -345,13 +413,15 @@ export async function sendOrderStatusUpdateEmail(to: string, name: string, order
  * 6. Account Security Alert Email
  */
 export async function sendSecurityAlertEmail(to: string, name: string, message: string): Promise<void> {
+  const safeName = escapeHtml(name);
+  const safeMessage = escapeHtml(message);
   const title = "Grocerly Account Security Alert";
   const html = renderEmailLayout(
     title,
     `
       <h2 style="margin-top:0; color:#163C29;">Security Notification</h2>
-      <p>Hello ${name},</p>
-      <p>${message}</p>
+      <p>Hello ${safeName},</p>
+      <p>${safeMessage}</p>
       <div class="security-notice">
         If you recognize this activity, no action is needed. If you did not authorize this, please reset your password immediately.
       </div>

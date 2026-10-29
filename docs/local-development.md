@@ -49,8 +49,9 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 MONGODB_URI=mongodb://127.0.0.1:27017/grocerly
 MONGODB_DB_NAME=grocerly
 
-# Cryptographic Session & Token Signing Secret (min 32 characters)
-AUTH_SECRET=grocerly_super_secure_production_session_signing_secret_2026_dev_seed
+# Cryptographic Session & Token Signing Secret (min 32 characters in production)
+# Generate via: openssl rand -hex 32
+AUTH_SECRET=replace_with_cryptographically_strong_random_secret_32_chars
 
 # Challenge & Session Lifespans
 SESSION_TTL_SECONDS=604800
@@ -59,9 +60,10 @@ OTP_MAX_ATTEMPTS=5
 OTP_RESEND_COOLDOWN_SECONDS=60
 PASSWORD_RESET_TTL_SECONDS=900
 
-# Optional Initial Staff Passwords (used during seed.ts if provisioning fresh accounts)
-INITIAL_ADMIN_PASSWORD=Admin@Grocerly2026!
-INITIAL_OPS_PASSWORD=Ops@Grocerly2026!
+# Optional Initial Staff Passwords (used during seed.ts if provisioning fresh accounts;
+# if unset, seed.ts generates secure random 16-byte hex passwords and prints them to terminal)
+INITIAL_ADMIN_PASSWORD=replace_with_secure_initial_admin_password
+INITIAL_OPS_PASSWORD=replace_with_secure_initial_ops_password
 
 # Transactional Email (Nodemailer SMTP)
 # Leave empty for development; emails log to the server console safely
@@ -127,7 +129,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | Command | Action |
 | :--- | :--- |
 | `npm run dev` | Starts Next.js development server with hot module replacement (HMR). |
-| `npm test` | Runs the full 39-test automated test suite using `tsx --test`. |
+| `npm test` | Runs the full 53-test automated test suite using `tsx --test`. |
 | `npm run build` | Compiles optimized production bundle and runs static route generation. |
 | `npm run start` | Launches compiled production server. |
 | `npm run seed` | Seeds database categories, products, coupons, and staff accounts. |

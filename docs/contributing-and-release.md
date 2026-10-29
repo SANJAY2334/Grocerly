@@ -16,11 +16,11 @@
 
 ### 1.2 Pull Request Criteria
 Before submitting a PR for review, the author must ensure:
-1. `npm test` passes with **39 / 39 tests passing** (0 failures).
+1. `npm test` passes with **53 / 53 tests passing** (0 failures).
 2. `npx tsc --noEmit` passes with **0 TypeScript errors**.
 3. `npm run build` compiles all 71 routes with exit code 0.
 4. No sensitive secrets, credentials, or personal connection strings are committed.
-5. All new business logic or database changes include accompanying tests in `tests/commerce.test.mjs` or `tests/production-suite.test.mjs`.
+5. All new business logic or database changes include accompanying tests in `tests/commerce.test.mjs`, `tests/production-suite.test.mjs`, or `tests/acceptance.test.mjs`.
 
 ### 1.3 Code Formatting & Linting
 - Follow standard TypeScript and React best practices.
@@ -60,7 +60,7 @@ Before tagging and deploying a production release:
   - Implemented 10 persistent collections with compound, unique, text, and TTL indexes.
   - Added non-destructive database backup/restore verification test (`scripts/test-backup-restore.mjs`).
 - **Security & Identity**:
-  - Pinned Next.js to security-hardened `next@14.2.35` LTS.
+  - Pinned Next.js to `next@14.2.15`.
   - Implemented Bcrypt salt 12 hashing with Scrypt fallback.
   - Added single-use 6-digit OTP verification with HMAC-SHA256 digests (zero plaintext storage).
   - Enforced 300s OTP expiration, 5-attempt lockout, and 60s resend cooldown.
@@ -74,7 +74,7 @@ Before tagging and deploying a production release:
   - Implemented 9-state finite state machine with role-based transition guards.
   - Added honest Razorpay gateway integration with transparent COD fallback.
 - **Testing**:
-  - Expanded automated test suite to 39 passing tests (100% pass rate).
+  - Expanded automated test suite to 53 passing tests (39 unit/domain + 14 genuine route integration tests, 100% pass rate).
   - Validated live E2E integration script (`scripts/test-e2e-live.js`).
 
 ### Version 1.0.0 (September 2026) — *Initial Release*

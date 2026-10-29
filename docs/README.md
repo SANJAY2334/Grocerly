@@ -19,7 +19,7 @@ This documentation system is grounded strictly in the verified source code, auto
 | [Database Schema & Data Guide](database.md) | `DOC-DB` | Mongoose models, collection schemas, relationships, indexes (unique, compound, TTL), and migrations. | Backend, DBA |
 | [Authentication & Authorization](authentication-and-authorization.md) | `DOC-AUTH` | Bcrypt/Scrypt hashing, HMAC-SHA256 sessions, OTP challenge lifecycle, and Role-Based Access Control (RBAC). | Security, Backend |
 | [Security Architecture & Threat Model](security-and-threat-model.md) | `DOC-SEC` | STRIDE threat model, CSRF mitigations, rate limiting, NoSQL sanitization, and credential redaction. | DevSecOps, Compliance |
-| [Testing Strategy & Verification](testing.md) | `DOC-TEST` | Native Node.js test runner suite (39 passing tests), test coverage, execution commands, and test doubles. | QA, Dev |
+| [Testing Strategy & Verification](testing.md) | `DOC-TEST` | Native Node.js test runner suite (53 passing tests), test coverage, execution commands, and test doubles. | QA, Dev |
 | [Local Development Guide](local-development.md) | `DOC-DEV` | Prerequisites, environment variable configuration, MongoDB setup, database seeding, and running the app. | Developers, Onboarding |
 | [Deployment & CI/CD Guide](deployment-and-cicd.md) | `DOC-DEP` | Production deployment options (Standalone Node.js, Docker, Vercel), build pipeline, and containerization. | DevOps, SRE |
 | [Observability & Monitoring](observability.md) | `DOC-OBS` | Pino structured JSON logging, credential redaction policy, `/api/health`, `/api/ready` probes, and alerting rules. | SRE, Ops |
@@ -33,9 +33,9 @@ This documentation system is grounded strictly in the verified source code, auto
 
 ## ⚡ Quick System Overview
 
-- **Framework**: Next.js `14.2.35` (App Router) with React `18.3.1` and TypeScript `5.6.3`
+- **Framework**: Next.js `14.2.15` (App Router) with React `18.3.1` and TypeScript `5.6.3`
 - **Database**: MongoDB via Mongoose `8.7.0` (10 persistent collections with strict indexing)
 - **Security**: Passwords hashed with Bcrypt (salt rounds 12) & Scrypt fallback; sessions signed via HMAC-SHA256 stored in MongoDB with HttpOnly cookies; single-use OTPs stored as HMAC-SHA256 digests.
 - **Financial Precision**: 100% integer-paise pricing calculations eliminating floating-point rounding drift.
 - **Fulfillment**: Strict 9-state order finite state machine (`ORDER_TRANSITIONS`) preventing illegal state transitions.
-- **Test Suite**: 39 automated tests across `tests/commerce.test.mjs` and `tests/production-suite.test.mjs` with 100% pass rate.
+- **Test Suite**: 53 automated tests across `tests/commerce.test.mjs`, `tests/production-suite.test.mjs`, and `tests/acceptance.test.mjs` with 100% pass rate.

@@ -6,6 +6,7 @@ import { verifyRazorpayPaymentSignature } from "@/lib/payments";
 import { hasMaliciousKeys, sanitizeString } from "@/lib/validation";
 import { logger } from "@/lib/security";
 import { applySecurityChecks, requireAuth } from "@/lib/middleware";
+import { AuthenticationError, AuthorizationError } from "@/lib/errors";
 
 export async function POST(req: Request) {
   const security = applySecurityChecks(req, "payment_verify", 10, 60_000);
@@ -89,6 +90,12 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   } catch (err) {
+    if (err instanceof AuthenticationError) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+    if (err instanceof AuthorizationError) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Payment verification failed." },
       { status: 500 }

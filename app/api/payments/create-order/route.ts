@@ -5,6 +5,7 @@ import { createRazorpayServerOrder } from "@/lib/payments";
 import { toPaise } from "@/lib/pricing";
 import { hasMaliciousKeys, sanitizeString } from "@/lib/validation";
 import { applySecurityChecks, requireAuth } from "@/lib/middleware";
+import { AuthenticationError, AuthorizationError } from "@/lib/errors";
 
 export async function POST(req: Request) {
   const security = applySecurityChecks(req, "payment_create_order", 10, 60_000);
@@ -68,6 +69,12 @@ export async function POST(req: Request) {
       { status: 200 }
     );
   } catch (err) {
+    if (err instanceof AuthenticationError) {
+      return NextResponse.json({ error: "Authentication required." }, { status: 401 });
+    }
+    if (err instanceof AuthorizationError) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to create payment order." },
       { status: 503 }

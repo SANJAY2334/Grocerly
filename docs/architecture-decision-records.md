@@ -28,7 +28,7 @@
 Grocerly requires a fast, SEO-friendly storefront with rich client interactions (3D produce dome, meal planner) coupled with secure, typed API route handlers for commerce and administrative operations. Maintaining separate frontend and backend repositories introduces deployment friction, contract synchronization overhead, and duplicate models.
 
 ### Decision
-Adopt Next.js 14 (pinned to LTS security release `14.2.35`) using the App Router (`app/`) architecture with React 18 and TypeScript.
+Adopt Next.js 14 (pinned to `14.2.15` in `package.json`) using the App Router (`app/`) architecture with React 18 and TypeScript.
 - Server Components render static pages, category grids, and layout headers.
 - Route Handlers (`app/api/**/route.ts`) implement all RESTful APIs with native Web Request/Response objects.
 - Client Components (`'use client'`) handle stateful interactions using Zustand, Three.js, and Framer Motion.

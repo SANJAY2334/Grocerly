@@ -15,14 +15,16 @@ Grocerly employs an automated testing strategy based on Node.js's native test ru
 ```bash
 npm test
 ```
-*Executes:* `tsx --test tests/commerce.test.mjs tests/production-suite.test.mjs`
+*Executes:* `tsx --test tests/commerce.test.mjs tests/production-suite.test.mjs tests/acceptance.test.mjs`
 
 ### Verification Summary
-- **Total Test Files**: 2 (`tests/commerce.test.mjs`, `tests/production-suite.test.mjs`)
-- **Total Tests**: **39**
-- **Passing Tests**: **39** (100% pass rate)
+- **Total Test Files**: 3 (`tests/commerce.test.mjs`, `tests/production-suite.test.mjs`, `tests/acceptance.test.mjs`)
+- **Total Tests**: **53**
+- **Unit / Domain Tests**: **39** (`tests/commerce.test.mjs`, `tests/production-suite.test.mjs`)
+- **Genuine HTTP Route Integration Tests**: **14** (`tests/acceptance.test.mjs`)
+- **Passing Tests**: **53** (100% pass rate)
 - **Failing Tests**: 0
-- **Duration**: ~18.5 seconds (including Bcrypt work factor iterations and database transactions)
+- **Duration**: ~5.6 seconds (including Bcrypt iterations, database queries, and route executions)
 
 ---
 
@@ -80,6 +82,26 @@ Covers Zod request validation, cryptographic OTP delivery, Bcrypt auth lifecycle
 | 37 | `Logging & Audit: central redaction strips sensitive credentials` | `lib/logging/index.ts` | Redacts passwords, tokens, OTPs, card numbers. |
 | 38 | `Logging & Audit: logAuditEvent records events into audit trail` | `lib/logging/index.ts` | Records structured events in `auditlogs` collection. |
 | 39 | `Health Diagnostics: email and database reporting safely` | `lib/services/email.ts` | Returns diagnostic status without exposing credentials. |
+
+### 2.3 Suite 3: Real HTTP Route Integration & Acceptance (`tests/acceptance.test.mjs`)
+Exercises live Next.js route handlers with simulated `Request` objects, cookie session verification, atomic inventory compensation rollback, and security constraints:
+
+| # | Test Title | Module / Route Tested | Verified Behavior |
+| :---: | :--- | :--- | :--- |
+| 40 | `Acceptance 1: Guest browsing works without authentication` | `lib/db.ts` | Product catalog remains browsable by guests. |
+| 41 | `Acceptance 2: Guest cart pricing and validation works locally` | `lib/pricing.ts` | Basket math and totals compute accurately prior to login. |
+| 42 | `Acceptance 3: Direct guest order creation returns 401 via HTTP route with zero inventory deductions` | `app/api/orders/route.ts` | Unauthenticated order requests return HTTP 401; zero DB stock changes. |
+| 43 | `Acceptance 4: Direct unauthenticated payment creation & verification routes return 401` | `app/api/payments/` | Rejects unauthenticated requests to payment endpoints with HTTP 401. |
+| 44 | `Acceptance 5: Authenticated customers can place valid COD orders starting as CONFIRMED via HTTP route` | `app/api/orders/route.ts` | Real session places COD order, returns 201 Created, deducts stock. |
+| 45 | `Acceptance 6: Online orders require cryptographic verification and reject forged signatures via HTTP route` | `app/api/payments/verify/` | Forged Razorpay signature returns 400; order remains PENDING_PAYMENT. |
+| 46 | `Acceptance 7: Customer isolation enforced via HTTP routes (cross-customer order access & tampering rejected)` | `app/api/orders/[id]/route.ts` | Cross-customer access and unauthorized status mutations return HTTP 403 Forbidden. |
+| 47 | `Acceptance 8: Order confirmation integrity and honest HTTP error handling` | `app/api/orders/[id]/route.ts` | Non-existent orders return 404; unauthenticated return 401. |
+| 48 | `Acceptance 9: OTP delivery failure is reported honestly without claiming success` | `lib/services/auth.ts` | Simulated email delivery failure halts registration without creating ghost accounts. |
+| 49 | `Acceptance 10: Safe redirect validation and destination preservation` | `lib/validation.ts` | Permits safe relative redirects (`/checkout`); rejects external & protocol-relative phishing URLs. |
+| 50 | `Acceptance 11: Real HTTP Logout & session verification lifecycle via HTTP routes` | `app/api/auth/` | Validates session via `/api/auth/me`, invalidates via `/api/auth/logout`, clears session cookie. |
+| 51 | `Acceptance 12: Atomic inventory reservation rollback under partial reservation failure and concurrency` | `lib/services/order.ts` | Multi-item order with one failing item cleanly rolls back all reserved items; idempotency deduplication verified. |
+| 52 | `Acceptance 13: Email template HTML injection escaping and reset URL origin validation` | `lib/services/email.ts` | HTML characters in customer names/items are escaped; malicious reset URL origins are rejected. |
+| 53 | `Acceptance 14: Production AUTH_SECRET enforcement rejects predictable defaults and weak secrets` | `lib/config/index.ts` | Rejects missing, short (<32 chars), or known development secrets in production mode. |
 
 ---
 

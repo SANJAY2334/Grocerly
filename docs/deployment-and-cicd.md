@@ -18,7 +18,7 @@ flowchart LR
     end
 
     subgraph AppCluster ["Production Compute (Docker / Cloud Run / K8s)"]
-        Container["Grocerly Application Container\n(Node.js 20 LTS + Next.js 14.2.35)"]
+        Container["Grocerly Application Container\n(Node.js 20 LTS + Next.js 14.2.15)"]
     end
 
     subgraph DataPlane ["External Managed Services"]
@@ -124,7 +124,7 @@ A standard production CI/CD workflow consists of five automated pipeline stages:
 ```mermaid
 flowchart LR
     Lint["1. Lint & Format\n(next lint)"] --> TypeCheck["2. Type Check\n(tsc --noEmit)"]
-    TypeCheck --> Test["3. Automated Tests\n(npm test / 39 tests)"]
+    TypeCheck --> Test["3. Automated Tests\n(npm test / 53 tests)"]
     Test --> Build["4. Production Build\n(npm run build)"]
     Build --> Deploy["5. Zero-Downtime Deploy\n(Rolling Container Update)"]
 ```

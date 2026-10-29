@@ -1,5 +1,15 @@
 import { z } from "zod";
 
+export const KNOWN_INSECURE_SECRETS = [
+  "grocerly_super_secure_production_session_signing_secret_2026_dev_seed",
+  "grocerly-local-dev-hmac-secret-key-2026-do-not-use-in-prod",
+  "grocerly_test_secret_for_cryptographic_verification_key_32chars!",
+  "change-me-to-a-secure-random-secret-key-32-chars",
+  "dev-insecure-secret-key-must-be-at-least-32-characters-long",
+  "12345678901234567890123456789012",
+  "secretsecretsecretsecretsecret32",
+];
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().default(3000),
@@ -8,8 +18,7 @@ const envSchema = z.object({
   MONGODB_DB_NAME: z.string().default("grocerly"),
   AUTH_SECRET: z
     .string()
-    .min(32, "AUTH_SECRET must be at least 32 characters long for cryptographic security.")
-    .default("grocerly_super_secure_production_session_signing_secret_2026_dev_seed"),
+    .min(32, "AUTH_SECRET must be at least 32 characters long for cryptographic security."),
   SESSION_TTL_SECONDS: z.coerce.number().default(7 * 24 * 60 * 60), // 7 days
   OTP_TTL_SECONDS: z.coerce.number().default(300), // 5 minutes
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
@@ -40,16 +49,43 @@ const envSchema = z.object({
 
 export type EnvConfig = z.infer<typeof envSchema>;
 
+export function validateAuthSecretInProduction(secret: string | undefined): void {
+  if (!secret || secret.length < 32) {
+    throw new Error("Application startup aborted: AUTH_SECRET missing or too short (minimum 32 characters required in production).");
+  }
+  if (KNOWN_INSECURE_SECRETS.includes(secret)) {
+    throw new Error("Application startup aborted: Insecure development AUTH_SECRET cannot be used in production.");
+  }
+}
+
 function loadConfig(): EnvConfig {
-  const result = envSchema.safeParse(process.env);
+  const isProd = process.env.NODE_ENV === "production";
+  const rawSecret = process.env.AUTH_SECRET;
+
+  if (isProd) {
+    validateAuthSecretInProduction(rawSecret);
+  }
+
+  const effectiveAuthSecret = rawSecret || "grocerly-local-dev-hmac-secret-key-2026-do-not-use-in-prod";
+  if (!isProd && !rawSecret) {
+    console.warn("[SECURITY NOTICE] Using development AUTH_SECRET fallback. Configure a 32+ character AUTH_SECRET in production.");
+  }
+
+  const parseInput = {
+    ...process.env,
+    AUTH_SECRET: effectiveAuthSecret,
+  };
+
+  const result = envSchema.safeParse(parseInput);
   if (!result.success) {
     const formatted = result.error.format();
     console.error("CRITICAL: Invalid environment configuration:", JSON.stringify(formatted, null, 2));
-    if (process.env.NODE_ENV === "production") {
+    if (isProd) {
       throw new Error("Application startup aborted due to invalid environment variables.");
     }
   }
-  return result.success ? result.data : (envSchema.parse({}) as EnvConfig);
+
+  return result.success ? result.data : (envSchema.parse({ AUTH_SECRET: effectiveAuthSecret }) as EnvConfig);
 }
 
 export const config = loadConfig();
