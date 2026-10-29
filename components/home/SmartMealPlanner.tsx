@@ -166,7 +166,7 @@ export function SmartMealPlanner() {
 
         {/* Quick Suggestion Chips */}
         <div className="flex flex-wrap items-center justify-center gap-2 mt-3 text-xs text-ink-muted">
-          <span>Try:</span>
+          <span className="opacity-60">Try:</span>
           <button
             type="button"
             onClick={() => {
@@ -178,6 +178,19 @@ export function SmartMealPlanner() {
             className="hover:text-forest underline cursor-pointer"
           >
             &quot;paneer butter masala for 4&quot;
+          </button>
+          <span>&bull;</span>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedRecipeIds(["palak-paneer"]);
+              setServingsMap({ "palak-paneer": 4 });
+              setActivePreviewId("palak-paneer");
+              setNlQuery("creamy palak paneer for 4");
+            }}
+            className="hover:text-forest underline cursor-pointer"
+          >
+            &quot;creamy palak paneer&quot;
           </button>
           <span>&bull;</span>
           <button
@@ -196,7 +209,7 @@ export function SmartMealPlanner() {
       </div>
 
       {/* Recipe Selection Chips (Multi-Selectable) */}
-      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-3 mb-6 justify-center">
+      <div className="flex flex-wrap items-center gap-2 pb-3 mb-6 justify-center">
         {RECIPES.map((recipe) => {
           const isSelected = selectedRecipeIds.includes(recipe.id);
           const isPreviewing = activePreviewId === recipe.id;
@@ -229,6 +242,7 @@ export function SmartMealPlanner() {
                 alt={activeRecipe.name}
                 fill
                 className="object-cover"
+                unoptimized
               />
               <div className="absolute top-3 left-3">
                 <span className="bg-white/90 backdrop-blur-sm text-[#163C29] font-bold text-[10px] px-2.5 py-1 rounded-full border border-[rgba(22,60,41,0.08)]">
