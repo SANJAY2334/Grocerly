@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserAccount } from "@/lib/types";
-import { Users, Shield, ArrowLeft, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Users, Shield, ArrowLeft, AlertCircle, CheckCircle2, KeyRound } from "lucide-react";
 
 export default function AdminUsersPage() {
   const router = useRouter();
@@ -45,17 +45,28 @@ export default function AdminUsersPage() {
           >
             <ArrowLeft className="w-3.5 h-3.5" /> Back to Operations Dashboard
           </Link>
-          <div className="flex items-center gap-2">
-            <h1 className="font-heading font-black text-3xl text-[#1A221E] flex items-center gap-2">
-              <Users className="w-8 h-8 text-[#163C29]" /> User Management
-            </h1>
-            <span className="px-3 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold uppercase tracking-wider">
-              ADMIN ONLY
-            </span>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="font-heading font-black text-3xl text-[#1A221E] flex items-center gap-2">
+                  <Users className="w-8 h-8 text-[#163C29]" /> User Management
+                </h1>
+                <span className="px-3 py-1 rounded-full bg-red-100 text-red-800 text-xs font-bold uppercase tracking-wider">
+                  ADMIN ONLY
+                </span>
+              </div>
+              <p className="text-xs text-[#6B7280] mt-1">
+                Registered accounts, verification status, and security roles.
+              </p>
+            </div>
+
+            <Link
+              href="/admin/staff-setup"
+              className="px-3.5 py-2 rounded-xl bg-forest hover:bg-forest/90 text-[#C8E27A] font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs self-start sm:self-auto"
+            >
+              <KeyRound className="w-3.5 h-3.5" /> Staff Setup & Reset
+            </Link>
           </div>
-          <p className="text-xs text-[#6B7280] mt-1">
-            Registered accounts, verification status, and security roles.
-          </p>
         </div>
 
         {error && (

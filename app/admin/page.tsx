@@ -20,6 +20,7 @@ import {
   Edit2,
   Eye,
   Filter,
+  KeyRound,
   Layers,
   Lock,
   Package,
@@ -300,6 +301,14 @@ export default function AdminPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          {user?.role === "ADMIN" && (
+            <Link
+              href="/admin/staff-setup"
+              className="px-3.5 py-2 rounded-xl bg-forest hover:bg-forest/90 text-[#C8E27A] font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs"
+            >
+              <KeyRound className="w-3.5 h-3.5" /> Staff Setup
+            </Link>
+          )}
           <button
             type="button"
             onClick={loadAdminData}

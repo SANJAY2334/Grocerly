@@ -11,8 +11,13 @@ after(async () => {
 });
 
 import { hashPassword, verifyPassword } from "../lib/auth.ts";
-import { secureHashPassword, verifyUserPassword, registerUser, authenticateUser } from "../lib/services/auth.ts";
+import { secureHashPassword, verifyUserPassword, registerUser, authenticateUser, createSession } from "../lib/services/auth.ts";
 import { requireAuth, requireRole } from "../lib/middleware/index.ts";
+import { resetRateLimits } from "../lib/security.ts";
+import { UserModel } from "../lib/models/User.ts";
+import { SessionModel } from "../lib/models/Session.ts";
+import { connectToDatabase } from "../lib/db/connection.ts";
+import { GET as staffSetupGet, POST as staffSetupPost } from "../app/api/admin/staff-setup/route.ts";
 
 test("Staff Authentication: Scrypt password hashing from seed script correctly authenticates Admin and OPS", async () => {
   const adminPass = "AdminDemoPass2026!";
@@ -83,4 +88,273 @@ test("Public Registration Security: cannot elevate to ADMIN or OPS role via self
 
   const regResult = await registerUser(regPayload);
   assert.equal(regResult.user.role, "CUSTOMER", "Public registration must always force role to CUSTOMER regardless of payload");
+});
+
+test("Staff Setup Route: Password validation rejects short passwords, weak passwords, and mismatches", async () => {
+  resetRateLimits();
+  // Test password too short (<8 chars)
+  const reqShort = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Origin": "http://localhost:3000", "Host": "localhost:3000" },
+    body: JSON.stringify({ target: "ADMIN", password: "Short1!", confirmPassword: "Short1!" }),
+  });
+  const resShort = await staffSetupPost(reqShort);
+  assert.equal(resShort.status, 400, "Password under 8 chars must be rejected");
+
+  // Test password missing uppercase / lowercase / number
+  const reqNoUpper = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Origin": "http://localhost:3000", "Host": "localhost:3000" },
+    body: JSON.stringify({ target: "ADMIN", password: "alllowercase123!", confirmPassword: "alllowercase123!" }),
+  });
+  const resNoUpper = await staffSetupPost(reqNoUpper);
+  assert.equal(resNoUpper.status, 400, "Password without uppercase letter must be rejected");
+
+  // Test password mismatch
+  const reqMismatch = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Origin": "http://localhost:3000", "Host": "localhost:3000" },
+    body: JSON.stringify({ target: "ADMIN", password: "ValidPassword123!", confirmPassword: "DifferentPassword123!" }),
+  });
+  const resMismatch = await staffSetupPost(reqMismatch);
+  assert.equal(resMismatch.status, 400, "Mismatched confirm password must be rejected");
+});
+
+test("Staff Setup Route: Role authorization and bootstrap access control", async () => {
+  resetRateLimits();
+  await connectToDatabase();
+  delete process.env.GROCERLY_TEST_IN_MEMORY;
+
+  // Ensure clean staff test state in local MongoDB
+  await UserModel.deleteMany({ email: { $in: ["admin@grocerly.in", "ops@grocerly.in", "cust_test@grocerly.in"] } });
+  await SessionModel.deleteMany({ userId: { $in: ["usr-admin-01", "usr-ops-01", "usr-cust-test"] } });
+
+  // 1. Initial State: Zero admins exist -> GET allows bootstrap inspection
+  const reqGetZeroAdmin = new Request("http://localhost:3000/api/admin/staff-setup", { method: "GET" });
+  const resGetZeroAdmin = await staffSetupGet(reqGetZeroAdmin);
+  assert.equal(resGetZeroAdmin.status, 200, "When 0 admins exist, GET returns 200");
+  const dataGetZero = await resGetZeroAdmin.json();
+  assert.equal(dataGetZero.data.canBootstrap, true, "canBootstrap must be true when 0 admins exist");
+  assert.equal(dataGetZero.data.adminExists, false, "adminExists must be false");
+
+  // 2. Bootstrap attempts:
+  // 2a. Bootstrap with invalid target (OPS) -> 400
+  const reqBadTarget = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Origin": "http://localhost:3000", "Host": "localhost:3000" },
+    body: JSON.stringify({
+      target: "OPS",
+      password: "OpsPassword123!",
+      confirmPassword: "OpsPassword123!",
+      bootstrapSecret: process.env.AUTH_SECRET,
+    }),
+  });
+  const resBadTarget = await staffSetupPost(reqBadTarget);
+  assert.equal(resBadTarget.status, 400, "Initial bootstrap target must only be ADMIN");
+
+  // 2b. Bootstrap with wrong secret -> 403
+  const reqWrongSecret = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Origin": "http://localhost:3000", "Host": "localhost:3000" },
+    body: JSON.stringify({
+      target: "ADMIN",
+      password: "AdminPassword123!",
+      confirmPassword: "AdminPassword123!",
+      bootstrapSecret: "completely-wrong-bootstrap-secret-value",
+    }),
+  });
+  const resWrongSecret = await staffSetupPost(reqWrongSecret);
+  assert.equal(resWrongSecret.status, 403, "Invalid bootstrap secret must return 403");
+
+  // 2c. Bootstrap with valid secret -> 200 (Creates admin@grocerly.in)
+  const reqValidBootstrap = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Origin": "http://localhost:3000", "Host": "localhost:3000" },
+    body: JSON.stringify({
+      target: "ADMIN",
+      password: "AdminPassword123!",
+      confirmPassword: "AdminPassword123!",
+      bootstrapSecret: process.env.AUTH_SECRET,
+    }),
+  });
+  const resValidBootstrap = await staffSetupPost(reqValidBootstrap);
+  assert.equal(resValidBootstrap.status, 200, "Valid bootstrap must successfully create Admin");
+  const dataBootstrap = await resValidBootstrap.json();
+  assert.equal(dataBootstrap.data.account.action, "CREATED");
+  assert.equal(dataBootstrap.data.account.role, "ADMIN");
+  assert.equal(dataBootstrap.data.account.email, "admin@grocerly.in");
+
+  // Verify Admin was persisted in MongoDB with scrypt hash and ACTIVE status
+  const persistedAdmin = await UserModel.findOne({ email: "admin@grocerly.in" });
+  assert.ok(persistedAdmin, "Admin must be created in UserModel");
+  assert.equal(persistedAdmin.role, "ADMIN");
+  assert.equal(persistedAdmin.status, "ACTIVE");
+  assert.equal(persistedAdmin.verified, true);
+  assert.equal(persistedAdmin.passwordHash.startsWith("scrypt:"), true, "Password must be hashed with scrypt");
+  const verifyPass = await verifyUserPassword("AdminPassword123!", persistedAdmin.passwordHash);
+  assert.equal(verifyPass, true, "Persisted password hash must verify successfully");
+
+  // 3. Now that Admin exists:
+  // 3a. Unauthenticated GET must be rejected with 401
+  const reqGetUnauth = new Request("http://localhost:3000/api/admin/staff-setup", { method: "GET" });
+  const resGetUnauth = await staffSetupGet(reqGetUnauth);
+  assert.equal(resGetUnauth.status, 401, "Unauthenticated GET must return 401 when admin exists");
+
+  // 3b. Unauthenticated POST (bootstrap attempt) must now be rejected with 401
+  const reqPostBootstrapAfterAdmin = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Origin": "http://localhost:3000", "Host": "localhost:3000" },
+    body: JSON.stringify({
+      target: "ADMIN",
+      password: "NewPassword123!",
+      confirmPassword: "NewPassword123!",
+      bootstrapSecret: process.env.AUTH_SECRET,
+    }),
+  });
+  const resPostBlocked = await staffSetupPost(reqPostBootstrapAfterAdmin);
+  assert.equal(resPostBlocked.status, 401, "Bootstrap must be permanently disabled once an Admin exists");
+
+  // 4. Role Authorization:
+  // 4a. Create a CUSTOMER user & session
+  await UserModel.create({
+    id: "usr-cust-test",
+    name: "Customer Test",
+    email: "cust_test@grocerly.in",
+    role: "CUSTOMER",
+    verified: true,
+    status: "ACTIVE",
+    passwordHash: hashPassword("CustTestPass123!"),
+  });
+  const custSession = await createSession("usr-cust-test", "CUSTOMER");
+
+  const reqCustPost = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${custSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      target: "ADMIN",
+      password: "HackedPassword123!",
+      confirmPassword: "HackedPassword123!",
+    }),
+  });
+  const resCustPost = await staffSetupPost(reqCustPost);
+  assert.equal(resCustPost.status, 403, "CUSTOMER must be forbidden with 403");
+
+  // 4b. Create an OPS user & session
+  await UserModel.create({
+    id: "usr-ops-01",
+    name: "Ops Test",
+    email: "ops@grocerly.in",
+    role: "OPS",
+    verified: true,
+    status: "ACTIVE",
+    passwordHash: hashPassword("OpsTestPass123!"),
+  });
+  const opsSession = await createSession("usr-ops-01", "OPS");
+
+  const reqOpsPost = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${opsSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      target: "ADMIN",
+      password: "HackedPassword123!",
+      confirmPassword: "HackedPassword123!",
+    }),
+  });
+  const resOpsPost = await staffSetupPost(reqOpsPost);
+  assert.equal(resOpsPost.status, 403, "OPS must be forbidden with 403");
+
+  // 5. Authenticated ADMIN can manage staff:
+  resetRateLimits();
+  const adminSession = await createSession("usr-admin-01", "ADMIN");
+
+  // 5a. ADMIN GET returns 200 with staff status
+  const reqAdminGet = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "GET",
+    headers: {
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+  });
+  const resAdminGet = await staffSetupGet(reqAdminGet);
+  assert.equal(resAdminGet.status, 200, "ADMIN GET must return 200");
+  const adminGetData = await resAdminGet.json();
+  assert.equal(adminGetData.data.adminExists, true);
+  assert.equal(adminGetData.data.opsExists, true);
+  assert.equal(adminGetData.data.canBootstrap, false);
+
+  // 5b. Resetting OPS account without confirmReset -> 400
+  const reqResetWithoutConfirm = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      target: "OPS",
+      password: "NewOpsPassword123!",
+      confirmPassword: "NewOpsPassword123!",
+      confirmReset: false,
+    }),
+  });
+  const resResetWithoutConfirm = await staffSetupPost(reqResetWithoutConfirm);
+  assert.equal(resResetWithoutConfirm.status, 400, "Resetting existing account without confirmReset must return 400");
+
+  // 5c. Resetting OPS account WITH confirmReset -> 200 and revokes active sessions
+  const reqResetConfirmed = new Request("http://localhost:3000/api/admin/staff-setup", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      target: "OPS",
+      password: "NewOpsPassword123!",
+      confirmPassword: "NewOpsPassword123!",
+      confirmReset: true,
+    }),
+  });
+  const resResetConfirmed = await staffSetupPost(reqResetConfirmed);
+  assert.equal(resResetConfirmed.status, 200, "Resetting with confirmReset must succeed");
+  const resetData = await resResetConfirmed.json();
+  assert.equal(resetData.data.account.action, "RESET");
+
+  // Verify OPS active sessions were revoked in SessionModel
+  const revokedOpsSessions = await SessionModel.find({ userId: "usr-ops-01" });
+  assert.ok(revokedOpsSessions.length > 0, "OPS session must exist");
+  for (const sess of revokedOpsSessions) {
+    assert.ok(sess.revokedAt, "OPS session must have revokedAt set");
+  }
+});
+
+test("Staff Setup Route: Rate limiting strictly blocks abuse after 10 requests/min with HTTP 429", async () => {
+  resetRateLimits();
+  let wasRateLimited = false;
+  for (let i = 0; i < 15; i++) {
+    const req = new Request("http://localhost:3000/api/admin/staff-setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Origin": "http://localhost:3000", "Host": "localhost:3000" },
+      body: JSON.stringify({ target: "ADMIN", password: "Short1", confirmPassword: "Short1" }),
+    });
+    const res = await staffSetupPost(req);
+    if (res.status === 429) {
+      wasRateLimited = true;
+      assert.ok(res.headers.get("Retry-After"), "Rate limited response must include Retry-After header");
+      break;
+    }
+  }
+  assert.equal(wasRateLimited, true, "15 rapid requests must trigger HTTP 429 rate limit");
+  resetRateLimits();
 });
