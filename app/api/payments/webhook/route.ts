@@ -7,6 +7,8 @@ import { verifyRazorpayWebhookSignature } from "@/lib/payments";
 import { sanitizeString } from "@/lib/validation";
 import { logger } from "@/lib/security";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(req: Request) {
   try {
     const rawBody = await req.text();
@@ -42,15 +44,26 @@ export async function POST(req: Request) {
 
     await connectToDatabase();
 
-    const existingWebhook = await ProcessedWebhookModel.findOne({ eventId });
-    if (existingWebhook) {
-      return NextResponse.json(
-        { processed: true, duplicate: true, eventId },
-        { status: 200 }
-      );
+    const eventType = payload.event || "unknown";
+
+    // Atomic idempotency claim: Insert ProcessedWebhookModel record first.
+    // Unique index on eventId guarantees that concurrent duplicate webhooks are rejected
+    // immediately with E11000, preventing race conditions and double-processing.
+    try {
+      await ProcessedWebhookModel.create({
+        eventId,
+        eventType,
+      });
+    } catch (err: any) {
+      if (err?.code === 11000 || String(err?.message).includes("E11000")) {
+        return NextResponse.json(
+          { processed: true, duplicate: true, eventId },
+          { status: 200 }
+        );
+      }
+      throw err;
     }
 
-    const eventType = payload.event || "";
     const paymentEntity = payload.payload?.payment?.entity;
     const requestedOrderId = paymentEntity?.notes?.grocerlyOrderId;
     const rzpOrderId = paymentEntity?.order_id;
@@ -105,11 +118,6 @@ export async function POST(req: Request) {
         );
       }
     }
-
-    await ProcessedWebhookModel.create({
-      eventId,
-      eventType,
-    });
 
     return NextResponse.json(
       { processed: true, duplicate: false, eventId },

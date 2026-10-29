@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { UserRole } from "./types";
-import { config, KNOWN_INSECURE_SECRETS } from "./config";
+import { config, KNOWN_INSECURE_SECRETS, isBuildPhase } from "./config";
 
 export const SESSION_COOKIE_NAME = "grocerly_session";
 const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -25,7 +25,7 @@ export interface SessionPayload {
  */
 export function getAuthSecret(): string {
   const envSecret = process.env.AUTH_SECRET || config.AUTH_SECRET;
-  if (process.env.NODE_ENV === "production") {
+  if (process.env.NODE_ENV === "production" && !isBuildPhase()) {
     if (!envSecret || envSecret.length < 32) {
       throw new Error("CRITICAL: AUTH_SECRET environment variable (≥32 chars) is required in production.");
     }

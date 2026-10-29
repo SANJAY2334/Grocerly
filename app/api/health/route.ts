@@ -4,6 +4,8 @@ import { checkEmailHealth } from "@/lib/services/email";
 import { getRazorpayConfigStatus } from "@/lib/payments";
 import { ProductModel } from "@/lib/models/Product";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const startTime = Date.now();
 

@@ -324,7 +324,39 @@ export async function updateOrderStatus(
 
   const previousStatus = order.status;
 
-  // If order is cancelled, restore reserved stock back to available stock
+  // Atomically transition status only if it still matches previousStatus,
+  // preventing concurrent race conditions from executing multiple times.
+  const updatedDoc = await OrderModel.findOneAndUpdate(
+    { id: orderId, status: previousStatus },
+    {
+      $set: {
+        status: newStatus,
+        ...(extra?.paymentStatus ? { paymentStatus: extra.paymentStatus } : {}),
+        ...(extra?.razorpayPaymentId ? { razorpayPaymentId: extra.razorpayPaymentId } : {}),
+      },
+      $push: {
+        timeline: {
+          status: newStatus,
+          timestamp: new Date().toISOString(),
+          note,
+          actor: actorId,
+          actorRole,
+        },
+      },
+    },
+    { new: true }
+  );
+
+  if (!updatedDoc) {
+    // Another concurrent process already updated the status
+    const currentOrder = await OrderModel.findOne({ id: orderId }).lean();
+    return {
+      success: true,
+      order: currentOrder as unknown as Order,
+    };
+  }
+
+  // Stock restoration ONLY executes if this exact thread won the atomic transition to CANCELLED
   if (newStatus === "CANCELLED" && previousStatus !== "CANCELLED") {
     for (const item of order.items) {
       await ProductModel.updateOne(
@@ -334,25 +366,7 @@ export async function updateOrderStatus(
     }
   }
 
-  order.status = newStatus;
-  if (extra?.paymentStatus) {
-    order.paymentStatus = extra.paymentStatus;
-  }
-  if (extra?.razorpayPaymentId) {
-    order.razorpayPaymentId = extra.razorpayPaymentId;
-  }
-
-  order.timeline.push({
-    status: newStatus,
-    timestamp: new Date().toISOString(),
-    note,
-    actor: actorId,
-    actorRole,
-  });
-
-  await order.save();
-
-  const updatedOrder = order.toObject() as unknown as Order;
+  const updatedOrder = updatedDoc.toObject() as unknown as Order;
 
   await logAuditEvent({
     eventType: "ORDER_STATUS_UPDATED",

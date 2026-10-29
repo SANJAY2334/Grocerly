@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { checkDbHealth } from "@/lib/db/connection";
 import { checkEmailHealth } from "@/lib/services/email";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: Request) {
   // Validate readiness of core storage and dependencies
   const dbHealth = await checkDbHealth();

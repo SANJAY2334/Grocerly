@@ -49,7 +49,25 @@ const envSchema = z.object({
 
 export type EnvConfig = z.infer<typeof envSchema>;
 
+export function isBuildPhase(): boolean {
+  return (
+    process.env.NEXT_PHASE === "phase-production-build" ||
+    process.env.npm_lifecycle_event === "build" ||
+    process.env.NEXT_BUILD === "1"
+  );
+}
+
 export function validateAuthSecretInProduction(secret: string | undefined): void {
+  // During build phase (e.g. Next.js page collection on Vercel/CI), do not abort compilation
+  if (isBuildPhase()) {
+    if (!secret || secret.length < 32 || KNOWN_INSECURE_SECRETS.includes(secret)) {
+      console.warn(
+        "[BUILD NOTICE] AUTH_SECRET is not configured or using default during build phase. Ensure a cryptographically strong AUTH_SECRET (>=32 characters) is configured in your Vercel Project Environment Variables for runtime execution."
+      );
+    }
+    return;
+  }
+
   if (!secret || secret.length < 32) {
     throw new Error("Application startup aborted: AUTH_SECRET missing or too short (minimum 32 characters required in production).");
   }
@@ -66,8 +84,13 @@ function loadConfig(): EnvConfig {
     validateAuthSecretInProduction(rawSecret);
   }
 
-  const effectiveAuthSecret = rawSecret || "grocerly-local-dev-hmac-secret-key-2026-do-not-use-in-prod";
-  if (!isProd && !rawSecret) {
+  const effectiveAuthSecret =
+    rawSecret ||
+    (isBuildPhase()
+      ? "vercel_build_time_ephemeral_placeholder_secret_32chars!"
+      : "grocerly-local-dev-hmac-secret-key-2026-do-not-use-in-prod");
+
+  if (!isProd && !rawSecret && !isBuildPhase()) {
     console.warn("[SECURITY NOTICE] Using development AUTH_SECRET fallback. Configure a 32+ character AUTH_SECRET in production.");
   }
 
@@ -80,7 +103,7 @@ function loadConfig(): EnvConfig {
   if (!result.success) {
     const formatted = result.error.format();
     console.error("CRITICAL: Invalid environment configuration:", JSON.stringify(formatted, null, 2));
-    if (isProd) {
+    if (isProd && !isBuildPhase()) {
       throw new Error("Application startup aborted due to invalid environment variables.");
     }
   }
