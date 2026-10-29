@@ -67,11 +67,14 @@ export default function AdminPage() {
     try {
       // 1. Verify authenticated user role
       const meRes = await fetch("/api/auth/me", { cache: "no-store" });
+      const storeUser = useStore.getState().user;
       if (meRes.ok) {
         const meData = await meRes.json();
         const meUser = meData.data?.user || meData.user;
         if (meUser) {
-          setUser(meUser);
+          if (!storeUser || storeUser.id !== meUser.id || storeUser.role !== meUser.role) {
+            setUser(meUser);
+          }
           if (meUser.role === "ADMIN" || meUser.role === "OPS") {
             setIsStaff(true);
           } else {
@@ -79,14 +82,14 @@ export default function AdminPage() {
             setLoading(false);
             return;
           }
-        } else if (user && (user.role === "ADMIN" || user.role === "OPS")) {
+        } else if (storeUser && (storeUser.role === "ADMIN" || storeUser.role === "OPS")) {
           setIsStaff(true);
         } else {
           setIsStaff(false);
           setLoading(false);
           return;
         }
-      } else if (user && (user.role === "ADMIN" || user.role === "OPS")) {
+      } else if (storeUser && (storeUser.role === "ADMIN" || storeUser.role === "OPS")) {
         setIsStaff(true);
       } else {
         setIsStaff(false);
@@ -129,11 +132,12 @@ export default function AdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, setUser, setCatalogue]);
+  }, [setUser, setCatalogue]);
 
   useEffect(() => {
     loadAdminData();
-  }, [loadAdminData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleUpdateStock = async (e: React.FormEvent) => {
     e.preventDefault();
