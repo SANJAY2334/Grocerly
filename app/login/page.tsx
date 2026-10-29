@@ -1,13 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { Leaf, Lock, Mail, User, ShieldCheck, ArrowRight, AlertCircle, Eye, EyeOff } from "lucide-react";
 
-export default function LoginPage() {
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawRedirect = searchParams.get("redirect");
+  // Validate redirect to prevent open redirects (must start with / and not //)
+  const redirectTarget =
+    rawRedirect && rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
+      ? rawRedirect
+      : null;
+
   const { setUser, addToast } = useStore();
 
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -58,7 +66,10 @@ export default function LoginPage() {
           title: "Verify Your Email",
           message: "A 6-digit code has been sent to your email.",
         });
-        router.push(`/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+        const verifyUrl = redirectTarget
+          ? `/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}&redirect=${encodeURIComponent(redirectTarget)}`
+          : `/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`;
+        router.push(verifyUrl);
         return;
       }
 
@@ -77,9 +88,9 @@ export default function LoginPage() {
       });
 
       if (authenticatedUser.role === "ADMIN" || authenticatedUser.role === "OPS") {
-        router.push("/admin");
+        router.push(redirectTarget || "/admin");
       } else {
-        router.push("/dashboard");
+        router.push(redirectTarget || "/dashboard");
       }
     } catch {
       setError("Network error while connecting to authentication service.");
@@ -151,7 +162,11 @@ export default function LoginPage() {
             {unverifiedEmail && (
               <div className="pt-1">
                 <Link
-                  href={`/verify-email?email=${encodeURIComponent(unverifiedEmail)}`}
+                  href={
+                    redirectTarget
+                      ? `/verify-email?email=${encodeURIComponent(unverifiedEmail)}&redirect=${encodeURIComponent(redirectTarget)}`
+                      : `/verify-email?email=${encodeURIComponent(unverifiedEmail)}`
+                  }
                   className="inline-block py-1 px-3 rounded-lg bg-red-600 text-white font-bold text-[11px]"
                 >
                   Enter Verification Code →
@@ -264,5 +279,21 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="pt-28 pb-20 max-w-md mx-auto px-4 sm:px-6 text-center">
+          <div className="bg-white rounded-3xl border border-[rgba(22,60,41,0.08)] p-10 shadow-xs">
+            <p className="text-xs font-bold text-ink-muted">Loading sign in...</p>
+          </div>
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

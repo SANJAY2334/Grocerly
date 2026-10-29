@@ -18,6 +18,11 @@ export interface SentEmailRecord {
 }
 
 const sentEmailsTestQueue: SentEmailRecord[] = [];
+let simulateFailureInTest: boolean = false;
+
+export function setSimulateEmailFailureForTest(shouldFail: boolean): void {
+  simulateFailureInTest = shouldFail;
+}
 
 let cachedTransporter: Transporter | null = null;
 
@@ -48,6 +53,14 @@ export async function sendEmail(options: SendEmailOptions): Promise<{ success: b
 
   // Test environment isolation: only automated tests may use the test queue
   if (process.env.NODE_ENV === "test") {
+    if (simulateFailureInTest) {
+      appLogger.error(
+        { to: options.to, subject: options.subject },
+        "EMAIL_DELIVERY_FAILURE: Simulated delivery failure in test mode."
+      );
+      throw new Error("Simulated SMTP connection error: ETIMEDOUT connect to mail server");
+    }
+
     const record: SentEmailRecord = {
       to: options.to,
       subject: options.subject,

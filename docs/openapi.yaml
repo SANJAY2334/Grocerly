@@ -3,7 +3,7 @@ info:
   title: Grocerly RESTful E-Commerce & Security API
   version: 2.0.0
   description: >
-    Production-ready full-stack grocery e-commerce API with argon2/bcrypt/scrypt authentication,
+    Production-ready full-stack grocery e-commerce API with Bcrypt/Scrypt authentication,
     cryptographic OTP email verification, Mongoose/MongoDB data persistence, integer paise pricing engine,
     and role-based operational fulfillment.
 servers:
@@ -11,6 +11,173 @@ servers:
     description: Local Development Server
   - url: https://grocerly.in
     description: Production Cluster
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: grocerly_session
+      description: HttpOnly signed session cookie.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Cryptographic HMAC-SHA256 session bearer token.
+
+  schemas:
+    ApiResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ApiError:
+      type: object
+      required: [success, error]
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              example: RATE_LIMIT_EXCEEDED
+            message:
+              type: string
+              example: Too many requests. Please try again shortly.
+            details:
+              type: object
+        requestId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    SafeUser:
+      type: object
+      required: [id, name, email, role, verified]
+      properties:
+        id:
+          type: string
+          example: usr_1792335394245_d1d89671
+        name:
+          type: string
+          example: Priya Sharma
+        email:
+          type: string
+          format: email
+          example: priya@example.in
+        phone:
+          type: string
+          example: "+91 98765 43210"
+        role:
+          type: string
+          enum: [CUSTOMER, OPS, ADMIN]
+        verified:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
+    Product:
+      type: object
+      required: [id, sku, slug, name, brand, category, price, stock, unit, image]
+      properties:
+        id:
+          type: string
+          example: prod-spinach-01
+        sku:
+          type: string
+          example: GRY-VEG-SPIN-01
+        slug:
+          type: string
+          example: organic-baby-spinach
+        name:
+          type: string
+          example: Hydroponic Baby Spinach
+        brand:
+          type: string
+          example: GreenRoot Farms
+        category:
+          type: string
+          example: Vegetables
+        price:
+          type: number
+          example: 45
+        originalPrice:
+          type: number
+          example: 60
+        discount:
+          type: number
+          example: 25
+        rating:
+          type: number
+          example: 4.8
+        reviews:
+          type: number
+          example: 124
+        stock:
+          type: number
+          example: 42
+        reservedStock:
+          type: number
+          example: 0
+        unit:
+          type: string
+          example: 250g pack
+        image:
+          type: string
+          format: uri
+        organic:
+          type: boolean
+          example: true
+        freshnessScore:
+          type: number
+          example: 98
+
+    PricingBreakdown:
+      type: object
+      required: [itemSubtotal, discountAmount, deliveryFee, gstAmount, cgstAmount, sgstAmount, finalPayable]
+      properties:
+        itemSubtotal:
+          type: number
+          example: 450
+        couponCode:
+          type: string
+          nullable: true
+          example: FRESH50
+        discountAmount:
+          type: number
+          example: 50
+        deliveryFee:
+          type: number
+          example: 0
+        gstAmount:
+          type: number
+          example: 20
+        cgstAmount:
+          type: number
+          example: 10
+        sgstAmount:
+          type: number
+          example: 10
+        finalPayable:
+          type: number
+          example: 420
+        savingsAmount:
+          type: number
+          example: 110
 
 paths:
   /api/health:
@@ -27,14 +194,14 @@ paths:
       description: Returns readiness check for container orchestrators (Kubernetes / Cloud Run).
       responses:
         "200":
-          description: Storage and email dependencies ready.
+          description: Storage and dependencies ready.
         "503":
           description: Core dependencies unavailable.
 
   /api/auth/register:
     post:
       summary: Register Customer Account
-      description: Validates user details, hashes password, generates 6-digit OTP, and emails verification challenge.
+      description: Validates user details, hashes password (Bcrypt salt 12), generates 6-digit OTP, and emails verification challenge.
       requestBody:
         required: true
         content:
@@ -49,7 +216,7 @@ paths:
                 email:
                   type: string
                   format: email
-                  example: priya@example.com
+                  example: priya@example.in
                 password:
                   type: string
                   format: password
@@ -94,7 +261,7 @@ paths:
   /api/auth/resend-otp:
     post:
       summary: Resend Verification Code
-      description: Enforces resend cooldown and generates a new cryptographically secure 6-digit challenge.
+      description: Enforces 60-second cooldown and generates a new cryptographically secure 6-digit challenge.
       requestBody:
         required: true
         content:
@@ -111,7 +278,7 @@ paths:
                   enum: [EMAIL_VERIFICATION, PASSWORD_RESET, SENSITIVE_CHANGE]
       responses:
         "200":
-          description: Generic confirmation returned to prevent user enumeration.
+          description: OTP dispatched or rate-limited cooldown enforced.
 
   /api/auth/login:
     post:
@@ -153,6 +320,8 @@ paths:
       responses:
         "200":
           description: User profile or null if unauthenticated.
+        "401":
+          description: Unauthenticated.
 
   /api/auth/forgot-password:
     post:
@@ -223,36 +392,302 @@ paths:
         "200":
           description: List of active sessions.
 
+  /api/auth/sessions/{id}:
+    delete:
+      summary: Revoke Session
+      description: Revokes specific active session by ID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session revoked.
+
+  /api/products:
+    get:
+      summary: Query Product Catalog
+      description: Retrieves paginated and filtered product list with search and sorting.
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: maxPrice
+          in: query
+          schema:
+            type: number
+        - name: minRating
+          in: query
+          schema:
+            type: number
+        - name: inStockOnly
+          in: query
+          schema:
+            type: boolean
+        - name: organicOnly
+          in: query
+          schema:
+            type: boolean
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of catalog products with pagination.
+
+  /api/products/{id}:
+    get:
+      summary: Get Product Detail
+      description: Fetches full product data by unique ID or slug.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product details.
+        "404":
+          description: Product not found.
+
   /api/cart:
     get:
-      summary: Get Cart
+      summary: Get Persistent Cart
       description: Returns server-validated cart items, live stock checks, and integer paise pricing breakdown.
+      responses:
+        "200":
+          description: Cart items and pricing breakdown.
     post:
-      summary: Sync Cart
+      summary: Sync Persistent Cart
       description: Saves cart items to server for authenticated customer or guest session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required: [productId, quantity]
+                    properties:
+                      productId:
+                        type: string
+                      quantity:
+                        type: integer
+                couponCode:
+                  type: string
+      responses:
+        "200":
+          description: Cart updated.
+
+  /api/cart/validate:
+    post:
+      summary: Validate Cart & Pricing
+      description: Stateless server-side calculation of cart prices, coupon discounts, GST, and delivery fees.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                couponCode:
+                  type: string
+      responses:
+        "200":
+          description: Authoritative pricing breakdown.
+
+  /api/delivery/check:
+    get:
+      summary: Check PIN Code Serviceability
+      description: Validates delivery address PIN code and lists delivery time slot availability.
+      parameters:
+        - name: pincode
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Serviceability and slot status.
 
   /api/orders:
     get:
       summary: List Orders
       description: Strict customer-level isolation. Customers see their orders; ADMIN and OPS see all orders.
+      responses:
+        "200":
+          description: List of orders.
     post:
       summary: Place Order
       description: Atomic order creation with stock reservation and idempotency enforcement.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items, address, deliverySlot, paymentMethod]
+              properties:
+                items:
+                  type: array
+                address:
+                  type: object
+                deliverySlot:
+                  type: string
+                paymentMethod:
+                  type: string
+                  enum: [COD, UPI, CARD, NETBANKING]
+                couponCode:
+                  type: string
+                idempotencyKey:
+                  type: string
+      responses:
+        "201":
+          description: Order placed successfully.
 
   /api/orders/{id}:
     get:
       summary: Order Details
       description: Retrieves snapshot item details, delivery slot, and 4-stage tracking timeline.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order details.
+        "404":
+          description: Order not found.
     patch:
       summary: Transition Order Status
       description: Advances order along operational state machine or processes customer cancellation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                note:
+                  type: string
+      responses:
+        "200":
+          description: Order status updated.
+
+  /api/payments/create-order:
+    post:
+      summary: Create Razorpay Order
+      description: Generates server-side Razorpay order in INR paise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId]
+              properties:
+                orderId:
+                  type: string
+      responses:
+        "200":
+          description: Razorpay order details.
+        "503":
+          description: Payment gateway unconfigured.
+
+  /api/payments/verify:
+    post:
+      summary: Verify Payment Signature
+      description: Cryptographically verifies Razorpay payment HMAC signature.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, razorpay_order_id, razorpay_payment_id, razorpay_signature]
+      responses:
+        "200":
+          description: Payment verified.
+
+  /api/payments/webhook:
+    post:
+      summary: Payment Webhook Handler
+      description: Idempotent payment webhook processor.
+      responses:
+        "200":
+          description: Webhook acknowledged.
+
+  /api/admin/inventory:
+    get:
+      summary: Admin Inventory Dashboard
+      description: Requires ADMIN or OPS role. Returns product stock levels, low-stock warnings, and metrics.
+      responses:
+        "200":
+          description: Inventory and metrics.
+    patch:
+      summary: Update Product Stock or Pricing
+      description: Modifies stock (ADMIN/OPS), price (ADMIN), or toggles coupons (ADMIN).
+      responses:
+        "200":
+          description: Product or coupon updated.
+
+  /api/admin/orders:
+    get:
+      summary: Admin Order Queue
+      description: Requires ADMIN or OPS role. Returns global order list.
+      responses:
+        "200":
+          description: Order management list.
 
   /api/admin/users:
     get:
       summary: Admin User Directory
       description: Requires ADMIN role. Excludes password hashes.
+      responses:
+        "200":
+          description: List of registered users.
 
   /api/admin/audit-logs:
     get:
       summary: Admin Audit Logs
       description: Requires ADMIN role. Returns structured security and authentication events.
+      responses:
+        "200":
+          description: Security audit log entries.

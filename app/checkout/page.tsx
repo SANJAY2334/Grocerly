@@ -81,6 +81,43 @@ export default function CheckoutPage() {
     `idem_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`
   );
 
+  // Verify server-side session on mount — guests must sign in before checking out
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/auth/me")
+      .then((res) => {
+        if (!res.ok) {
+          router.push("/login?redirect=/checkout");
+          return null;
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (active && data?.user) {
+          setCheckingAuth(false);
+          setAddress((prev) => ({
+            fullName: prev.fullName || data.user.name || "",
+            phone: prev.phone || data.user.phone || "",
+            street: prev.street || data.user.addresses?.[0]?.street || "",
+            city: prev.city || data.user.addresses?.[0]?.city || "Mumbai",
+            state: prev.state || data.user.addresses?.[0]?.state || "Maharashtra",
+            pincode: prev.pincode || data.user.addresses?.[0]?.pincode || "400001",
+          }));
+        }
+      })
+      .catch(() => {
+        if (active) {
+          router.push("/login?redirect=/checkout");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
+
   // Sync user profile address if user loads asynchronously
   useEffect(() => {
     if (user) {
@@ -163,6 +200,17 @@ export default function CheckoutPage() {
       return true;
     }
   };
+
+  if (checkingAuth) {
+    return (
+      <div className="pt-28 pb-20 max-w-2xl mx-auto px-4 sm:px-6 text-center">
+        <div className="bg-white rounded-3xl border border-[rgba(22,60,41,0.08)] p-10 shadow-xs space-y-3">
+          <div className="w-12 h-12 rounded-full border-2 border-[#163C29] border-t-transparent animate-spin mx-auto" />
+          <p className="text-xs font-bold text-ink-muted">Verifying secure session...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Block checkout when cart is empty (unless an order modal is currently active)
   if (cart.length === 0 && !pendingOnlineOrder && !isSubmitting) {
@@ -263,6 +311,17 @@ export default function CheckoutPage() {
       });
 
       const data = await response.json();
+
+      if (response.status === 401) {
+        addToast({
+          type: "error",
+          title: "Session Expired",
+          message: "Please sign in to complete your checkout. Your cart has been preserved.",
+        });
+        router.push("/login?redirect=/checkout");
+        setIsSubmitting(false);
+        return;
+      }
 
       if (!response.ok || !data.order) {
         // Rotate idempotency key if validation failed so user can fix & retry

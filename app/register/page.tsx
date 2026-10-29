@@ -1,13 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
-import { useRouter } from "next/navigation";
+import React, { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useStore } from "@/lib/store";
 import { Leaf, Lock, Mail, User, Phone, Eye, EyeOff, ArrowRight, AlertCircle, CheckCircle2 } from "lucide-react";
 
-export default function RegisterPage() {
+function RegisterContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const rawRedirect = searchParams.get("redirect");
+  const redirectTarget =
+    rawRedirect && rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
+      ? rawRedirect
+      : null;
+
   const { addToast } = useStore();
 
   const [name, setName] = useState("");
@@ -62,7 +69,10 @@ export default function RegisterPage() {
         message: "A 6-digit verification code has been sent to your email.",
       });
 
-      router.push(`/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`);
+      const verifyUrl = redirectTarget
+        ? `/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}&redirect=${encodeURIComponent(redirectTarget)}`
+        : `/verify-email?email=${encodeURIComponent(email.trim().toLowerCase())}`;
+      router.push(verifyUrl);
     } catch {
       setError("Network error while connecting to authentication service.");
       setLoading(false);
@@ -193,11 +203,34 @@ export default function RegisterPage() {
 
         <div className="text-center text-xs text-[#6B7280] pt-2">
           Already have an account?{" "}
-          <Link href="/login" className="font-bold text-[#163C29] hover:underline">
+          <Link
+            href={
+              redirectTarget
+                ? `/login?redirect=${encodeURIComponent(redirectTarget)}`
+                : "/login"
+            }
+            className="font-bold text-[#163C29] hover:underline"
+          >
             Sign In here
           </Link>
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="pt-28 pb-20 max-w-md mx-auto px-4 sm:px-6 text-center">
+          <div className="bg-white rounded-3xl border border-[rgba(22,60,41,0.08)] p-10 shadow-xs">
+            <p className="text-xs font-bold text-ink-muted">Loading register...</p>
+          </div>
+        </div>
+      }
+    >
+      <RegisterContent />
+    </Suspense>
   );
 }

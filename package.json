@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test tests/commerce.test.mjs tests/production-suite.test.mjs",
+    "test": "tsx --test tests/commerce.test.mjs tests/production-suite.test.mjs tests/acceptance.test.mjs",
     "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {

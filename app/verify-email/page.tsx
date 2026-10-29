@@ -10,7 +10,11 @@ function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialEmail = searchParams.get("email") || "";
-  const redirectTo = searchParams.get("redirect") || "/dashboard";
+  const rawRedirect = searchParams.get("redirect");
+  const redirectTo =
+    rawRedirect && rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
+      ? rawRedirect
+      : "/dashboard";
 
   const { setUser, addToast } = useStore();
 
@@ -256,7 +260,14 @@ function VerifyEmailContent() {
 
         <div className="border-t border-black/5 pt-4 text-center text-xs text-[#6B7280]">
           Wrong email address?{" "}
-          <Link href="/register" className="font-bold text-[#163C29] hover:underline">
+          <Link
+            href={
+              redirectTo !== "/dashboard"
+                ? `/register?redirect=${encodeURIComponent(redirectTo)}`
+                : "/register"
+            }
+            className="font-bold text-[#163C29] hover:underline"
+          >
             Register again
           </Link>
         </div>

@@ -22,7 +22,7 @@ const envSchema = z.object({
   SMTP_FROM: z
     .string()
     .optional()
-    .transform((val) => val || process.env.EMAIL_FROM || "Grocerly <noreply@grocerly.in>"),
+    .transform((val) => val || process.env.MAIL_FROM || process.env.EMAIL_FROM || "Grocerly <noreply@grocerly.in>"),
   SMTP_SECURE: z
     .string()
     .default("false")

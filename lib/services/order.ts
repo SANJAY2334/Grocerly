@@ -94,7 +94,8 @@ export async function createNewOrder(params: {
     gstRate: 5,
   }));
 
-  const initialStatus: OrderStatus = "CONFIRMED";
+  const isCod = params.paymentMethod === "COD";
+  const initialStatus: OrderStatus = isCod ? "CONFIRMED" : "PENDING_PAYMENT";
 
   const orderDoc = await OrderModel.create({
     id: orderId,
@@ -105,7 +106,7 @@ export async function createNewOrder(params: {
     address: params.address,
     deliverySlot: params.deliverySlot,
     paymentMethod: params.paymentMethod,
-    paymentStatus: params.paymentMethod === "COD" ? "PENDING" : "PENDING",
+    paymentStatus: isCod ? "PENDING" : "PENDING",
     status: initialStatus,
     pricing: {
       itemSubtotal: pricing.itemSubtotal,
@@ -133,7 +134,9 @@ export async function createNewOrder(params: {
       {
         status: initialStatus,
         timestamp: nowIso,
-        note: "Order confirmed and queued for fulfillment.",
+        note: isCod
+          ? "Order confirmed and queued for fulfillment."
+          : "Order created and awaiting payment verification.",
         actor: params.userName || "Customer",
         actorRole: "CUSTOMER",
       },
@@ -153,11 +156,12 @@ export async function createNewOrder(params: {
       finalPayable: order.total,
       itemCount: order.items.length,
       paymentMethod: order.paymentMethod,
+      initialStatus: order.status,
     },
   });
 
-  // 7. Send confirmation email
-  if (params.userEmail) {
+  // 7. Send confirmation email (immediate for COD, online payments send on verification)
+  if (params.userEmail && isCod) {
     sendOrderConfirmationEmail(params.userEmail, params.userName || params.address.fullName, order).catch(() => {});
   }
 

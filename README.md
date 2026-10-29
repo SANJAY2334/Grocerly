@@ -1,39 +1,39 @@
-# 🥬 Grocerly — Production-Ready Grocery E-Commerce Platform
+# 🥬 Grocerly — Production-Grade Grocery E-Commerce Platform
 
-Grocerly is a full-stack, enterprise-grade online grocery marketplace built with Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, Framer Motion, Mongoose (MongoDB Atlas), Nodemailer, and Pino structured logging.
+Grocerly is a full-stack, enterprise-grade online grocery marketplace built with Next.js 14 (App Router, pinned to `14.2.35`), React 18, TypeScript, Tailwind CSS, Framer Motion, Mongoose (MongoDB), Nodemailer, and Pino structured logging.
 
 ---
 
 ## 🚀 Key Features
 
 - **Storefront & Experience**:
-  - Interactive 3D produce showcase dome built with Three.js / React Three Fiber.
+  - Interactive 3D produce showcase dome built with Three.js / React Three Fiber (with static WebGL fallback).
   - Curated organic categories, farm-fresh vegetable & fruit inventory with freshness meters.
-  - Interactive smart meal planner with automatic pantry deduplication and recipe ingredient scaling.
-  - Cart & Checkout drawer with real-time pincode serviceability checks.
+  - Interactive smart meal planner with automatic pantry deduplication, ingredient scaling, and shortfall substitute recommendations.
+  - Cart & Checkout drawer with real-time pincode serviceability checks and delivery slot selection.
   - Visual order tracking timeline with real-time cancellation support.
 
 - **Authentication & Security Lifecycle**:
   - Strict account registration with live client password strength meter + server-side Zod validation.
-  - Cryptographically secure 6-digit email OTP verification using HMAC-SHA256 digest storage (no plaintext OTPs saved).
-  - Rate-limited verification attempts, 60s resend cooldown, and atomic single-use challenge consumption.
-  - Unverified account gate preventing unauthenticated access to checkout or order placement.
-  - Server-managed sessions backed by HttpOnly, Secure, SameSite cookies with automatic token rotation.
-  - Anti-enumeration forgot password & single-use password reset workflow.
+  - Cryptographically secure 6-digit email OTP verification using HMAC-SHA256 digest storage (zero plaintext OTPs saved).
+  - Rate-limited verification attempts (5 max), 60s resend cooldown, and atomic single-use challenge consumption.
+  - Unverified account gate preventing unauthenticated access to checkout or order placement (HTTP 403 `EMAIL_NOT_VERIFIED`).
+  - Server-managed sessions backed by HttpOnly, Secure, SameSite cookies with SHA-256 database hashing.
+  - Anti-enumeration forgot password flow & single-use password reset workflow.
   - Centralized security audit trail (`AuditLog`) tracking all auth, order, and administrative events.
   - Zero credential leakage: central Pino logger redaction for passwords, tokens, hashes, and OTPs.
 
 - **Order & Financial Engine**:
   - Integer-paise precision calculation preventing fractional currency rounding errors.
-  - Delivery rules: Free delivery on orders ≥ ₹300, flat ₹40 fee otherwise.
+  - Delivery rules: Free delivery on orders $\ge$ ₹300, flat ₹40 fee otherwise.
   - Strict coupon validation supporting flat (`FRESH50`, `WELCOME100`) and percentage (`ORGANIC10`) discounts.
   - Indian GST breakdown with 5% split equally into CGST (2.5%) and SGST (2.5%).
-  - Multi-document atomic database transactions with inventory reservation, concurrency protection, and idempotency key deduplication.
+  - Atomic database transactions with inventory reservation, concurrency protection, and idempotency key deduplication.
   - Honest payment gateway integration: Razorpay HMAC-SHA256 signature verification + webhook handler, with transparent fallback to Cash on Delivery (COD) when unconfigured.
 
 - **Admin & Operations Portal**:
-  - `/admin/products`: Product catalog manager with real-time stock adjustment.
-  - `/admin/orders`: Order lifecycle transition console (PENDING → CONFIRMED → PACKED → OUT_FOR_DELIVERY → DELIVERED).
+  - `/admin/products`: Product catalog manager with real-time stock and price adjustment.
+  - `/admin/orders`: Order lifecycle transition console (`CONFIRMED` $\to$ `PROCESSING` $\to$ `PACKED` $\to$ `OUT_FOR_DELIVERY` $\to$ `DELIVERED`).
   - `/admin/users`: Customer management and verification status auditor.
   - `/admin/audit-logs`: Real-time audit log explorer with severity filtering.
 
@@ -43,25 +43,25 @@ Grocerly is a full-stack, enterprise-grade online grocery marketplace built with
 
 | Layer | Technologies |
 |---|---|
-| **Framework** | Next.js 14.2.15 (App Router, Server Components & Route Handlers) |
-| **Frontend** | React 18, TypeScript, Tailwind CSS, Framer Motion, Lucide Icons |
+| **Framework** | Next.js 14.2.35 (App Router, Server Components & Route Handlers) |
+| **Frontend** | React 18.3.1, TypeScript 5.6.3, Tailwind CSS, Framer Motion, Lucide Icons |
 | **3D Graphics** | Three.js, React Three Fiber, React Three Drei |
-| **State Management**| Zustand with local persistence |
-| **Database & ODM** | MongoDB Atlas / Serverless MongoDB via Mongoose 8.x |
-| **Validation** | Zod 3.x with strict input schemas |
+| **State Management**| Zustand 5.0 with local persistence |
+| **Database & ODM** | MongoDB (Local or Atlas) via Mongoose 8.7.0 (10 collections) |
+| **Validation** | Zod 4.6.7 with strict input schemas |
 | **Security & Auth** | Bcrypt (salt 12), Scrypt fallback, HMAC-SHA256 sessions, CSRF headers |
 | **Email Service** | Nodemailer with responsive HTML templates & in-memory test queue |
-| **Logging** | Pino with structured JSON output and central field redaction |
-| **Testing** | Node.js native test runner (`node --test`), 37 passing unit/integration tests |
+| **Logging** | Pino 10.4.0 with structured JSON output and central field redaction |
+| **Testing** | Node.js native test runner (`node:test`), 39 passing unit/integration tests |
 
 ---
 
 ## 📦 Getting Started
 
 ### 1. Prerequisites
-- Node.js 18.18+ or 20.x
-- MongoDB Atlas cluster or local MongoDB instance
-- (Optional) SMTP credentials for live email delivery (defaults to simulated in-memory transporter)
+- Node.js 18.18+ or 20.x LTS
+- MongoDB instance (Local on `mongodb://127.0.0.1:27017` or MongoDB Atlas cluster)
+- (Optional) SMTP credentials for live email delivery
 - (Optional) Razorpay test API keys for online payments
 
 ### 2. Environment Configuration
@@ -75,11 +75,15 @@ Configure your variables:
 # Application
 NODE_ENV=development
 APP_URL=http://localhost:3000
-AUTH_SECRET=your_super_secret_64_character_hex_key_here
+AUTH_SECRET=grocerly_super_secure_production_session_signing_secret_2026_dev_seed
 
 # Database
-MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/grocerly?retryWrites=true&w=majority
+MONGODB_URI=mongodb://127.0.0.1:27017/grocerly
 MONGODB_DB_NAME=grocerly
+
+# Staff Passwords (Optional; if omitted, seed.ts generates secure random passwords)
+INITIAL_ADMIN_PASSWORD=Admin@Grocerly2026!
+INITIAL_OPS_PASSWORD=Ops@Grocerly2026!
 
 # Email (SMTP)
 SMTP_HOST=smtp.sendgrid.net
@@ -89,9 +93,9 @@ SMTP_PASS=your_smtp_password
 SMTP_FROM=Grocerly <noreply@grocerly.in>
 
 # Payments (Razorpay)
-RAZORPAY_KEY_ID=rzp_test_your_key_id
-RAZORPAY_KEY_SECRET=your_key_secret
-RAZORPAY_WEBHOOK_SECRET=your_webhook_secret
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
 ```
 
 ### 3. Install Dependencies
@@ -105,9 +109,7 @@ Populate initial categories, products, coupons, and staff accounts:
 npm run seed
 ```
 
-Default seeded credentials:
-- **Admin**: `admin@grocerly.in` / `Admin@Grocerly2026!`
-- **Ops**: `ops@grocerly.in` / `Ops@Grocerly2026!`
+*Note: If `INITIAL_ADMIN_PASSWORD` is not set, the script generates a secure random 16-byte hex password and logs it to the terminal.*
 
 ### 5. Run Development Server
 ```bash
@@ -122,10 +124,13 @@ Open [http://localhost:3000](http://localhost:3000) to view the storefront.
 Grocerly includes a comprehensive automated test suite covering all security, auth, OTP, pricing, state machine, and database workflows:
 
 ```bash
-# Run all automated tests (37 passing tests)
+# Run all automated tests (39 passing tests)
 npm test
 
-# Run Next.js production build and type check (all 71 routes)
+# Run TypeScript type check (0 errors)
+npx tsc --noEmit
+
+# Run Next.js production build and static compilation (all 71 routes)
 npm run build
 
 # Start production server
@@ -134,22 +139,26 @@ npm run start
 
 ---
 
-## 📚 Documentation
+## 📚 Production Documentation System
 
-Detailed architectural and operational documentation is located in the `docs/` folder:
-- [Architecture & Security Model](docs/architecture.md)
+Comprehensive, verified production documentation is organized in the [`docs/`](docs/) directory:
+
+- [Documentation Index](docs/README.md)
+- [Product & Software Requirements Specification](docs/requirements.md)
+- [System Architecture & Components](docs/architecture.md)
+- [Architecture Decision Records (ADRs)](docs/architecture-decision-records.md)
+- [Data Flows & Sequence Diagrams](docs/data-flow-and-sequences.md)
+- [REST API Endpoint Reference](docs/api-reference.md)
 - [OpenAPI 3.1 Specification](docs/openapi.yaml)
-- [Deployment Guide (Vercel & Atlas)](docs/deployment.md)
-- [Operations Runbook & Incident Response](docs/operations-runbook.md)
-- [Handover Report](docs/handover-report.md)
-
----
-
-## 🔒 Security Best Practices
-- **No Secret Leaks**: Passwords, OTP codes, reset tokens, and API secrets are never included in JSON responses or structured log fields.
-- **Customer Isolation**: Non-admin users are strictly restricted to their own orders, carts, and profile records.
-- **Fail-Safe Design**: When database or SMTP services are unconfigured in development/test, Grocerly gracefully operates in safe in-memory fallback mode while alerting operators via `/api/health`.
-
----
-
-© 2026 Grocerly India. Built for farm-fresh grocery fulfillment.
+- [Database Schema & Migration Guide](docs/database.md)
+- [Authentication & Authorization Guide](docs/authentication-and-authorization.md)
+- [Security Architecture & STRIDE Threat Model](docs/security-and-threat-model.md)
+- [Testing Strategy & Test Suite Details](docs/testing.md)
+- [Local Development Guide](docs/local-development.md)
+- [Production Deployment & CI/CD](docs/deployment-and-cicd.md)
+- [Observability, Logging & Alerting](docs/observability.md)
+- [Disaster Recovery, Backup & Rollback](docs/disaster-recovery.md)
+- [Troubleshooting & Incident Playbooks](docs/troubleshooting-and-incident-response.md)
+- [User & Administrator Guide](docs/user-and-admin-guide.md)
+- [Contributing Standards & Release Changelog](docs/contributing-and-release.md)
+- [Technical Debt, Limitations & Roadmap](docs/technical-debt-and-roadmap.md)

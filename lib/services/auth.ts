@@ -134,13 +134,27 @@ export async function registerUser(
     testUsers.set(normalizedEmail, testUser);
     testUsers.set(userId, testUser);
 
-    const challenge = await createOtpChallenge({
-      email: normalizedEmail,
-      userId,
-      purpose: "EMAIL_VERIFICATION",
-    });
+    let challenge;
+    try {
+      challenge = await createOtpChallenge({
+        email: normalizedEmail,
+        userId,
+        purpose: "EMAIL_VERIFICATION",
+      });
 
-    await sendVerificationOtpEmail(normalizedEmail, validated.name, challenge.otp);
+      await sendVerificationOtpEmail(normalizedEmail, validated.name, challenge.otp);
+    } catch (emailErr) {
+      testUsers.delete(normalizedEmail);
+      testUsers.delete(userId);
+      const errMsg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+      appLogger.error(
+        { email: normalizedEmail, err: errMsg },
+        "Verification email dispatch failed during test registration."
+      );
+      throw new Error(
+        `Registration cannot be completed: failed to deliver verification email. ${errMsg}`
+      );
+    }
 
     await logAuditEvent({
       eventType: "USER_REGISTERED",
@@ -193,9 +207,27 @@ export async function registerUser(
     challengeId = challenge.challengeId;
     await sendVerificationOtpEmail(normalizedEmail, validated.name, challenge.otp);
   } catch (emailErr) {
-    appLogger.warn(
-      { email: normalizedEmail, err: emailErr instanceof Error ? emailErr.message : String(emailErr) },
-      "Verification email dispatch issue during registration."
+    // Redact OTP and passwords from log - log safe error details
+    const errMsg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+    appLogger.error(
+      { email: normalizedEmail, err: errMsg },
+      "Verification email dispatch failed during registration."
+    );
+
+    // Rollback unverified user record so user is not stuck in an unverified state with unreachable OTP
+    await UserModel.deleteOne({ id: userId }).catch(() => {});
+
+    await logAuditEvent({
+      eventType: "USER_REGISTRATION_FAILED",
+      actorId: userId,
+      targetType: "User",
+      targetId: userId,
+      outcome: "FAILURE",
+      metadata: { email: normalizedEmail, reason: "EMAIL_DELIVERY_FAILED", err: errMsg },
+    });
+
+    throw new Error(
+      `Registration cannot be completed: failed to deliver verification email. ${errMsg}`
     );
   }
 

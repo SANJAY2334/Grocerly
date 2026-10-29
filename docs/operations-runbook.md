@@ -1,6 +1,6 @@
 # Grocerly — Operations Runbook & Incident Response
 
-This runbook covers day-2 operations, telemetry monitoring, audit analysis, incident response, and disaster recovery for Grocerly.
+> **Note**: For the comprehensive incident classification matrix and step-by-step diagnostic playbooks, see [Troubleshooting & Incident Response Playbooks](troubleshooting-and-incident-response.md).
 
 ---
 
@@ -30,12 +30,18 @@ All server output is structured JSON formatted with Pino:
 
 ```json
 {
-  "level": "INFO",
-  "time": "2026-10-17T15:30:00.000Z",
+  "level": 30,
+  "time": "2026-10-18T14:56:34.532Z",
+  "env": "production",
   "service": "grocerly-backend",
-  "event": "AUTH_LOGIN_SUCCESS",
-  "actorId": "usr_17901842_a9f1",
-  "ip": "203.0.113.195"
+  "audit": {
+    "id": "audit_1792335394532_x4yb4",
+    "timestamp": "2026-10-18T14:56:34.532Z",
+    "eventType": "AUTH_LOGIN_SUCCESS",
+    "actorId": "usr_17901842_a9f1",
+    "ip": "203.0.113.195"
+  },
+  "msg": "AUDIT_EVENT: AUTH_LOGIN_SUCCESS [SUCCESS]"
 }
 ```
 
@@ -44,7 +50,7 @@ The logger centrally masks the following keys:
 - `password`, `passwordHash`, `secret`, `token`, `otp`, `otpHash`, `signature`, `cookie`, `cardnumber`, `cvv`.
 
 ### Security Audit Inspection
-Store administrators can inspect audit records live in `/admin/audit-logs` or query the `audit_logs` collection:
+Store administrators can inspect audit records live in `/admin/audit-logs` or query the `auditlogs` collection:
 - `USER_REGISTERED`
 - `EMAIL_VERIFICATION_FAILED`
 - `EMAIL_VERIFIED`

@@ -29,6 +29,10 @@ export default function SecuritySettingsPage() {
   const fetchSessions = async () => {
     try {
       const res = await fetch("/api/auth/sessions");
+      if (res.status === 401) {
+        router.push("/login?redirect=/settings/security");
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         setSessions(data.data?.sessions || []);

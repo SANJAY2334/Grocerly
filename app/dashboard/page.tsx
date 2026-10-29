@@ -44,11 +44,18 @@ export default function DashboardPage() {
     try {
       // Refresh current user session
       const meRes = await fetch("/api/auth/me");
-      if (meRes.ok) {
-        const meData = await meRes.json();
-        if (meData.user) {
-          setUser(meData.user);
-        }
+      if (!meRes.ok) {
+        setUser(null);
+        router.push("/login?redirect=/dashboard");
+        return;
+      }
+      const meData = await meRes.json();
+      if (meData.user) {
+        setUser(meData.user);
+      } else {
+        setUser(null);
+        router.push("/login?redirect=/dashboard");
+        return;
       }
 
       // Fetch user's orders

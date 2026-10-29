@@ -10,7 +10,7 @@
 
 Grocerly has undergone a comprehensive full-stack engineering audit, vulnerability remediation, live end-to-end integration verification, database backup/restore testing, and operational hardening. All artificial mock data, fake authentication bypasses, simulated OTP loops, and hardcoded administrative credentials have been permanently eliminated from the codebase.
 
-The application architecture is pinned to **Next.js 14.2.35** (the latest upstream security-patched release of Next.js 14), **React 18.3.1**, and **Mongoose 8.7.0**. The database layer operates against live MongoDB with atomic stock management, cryptographic idempotency deduplication, distributed session management via SHA-256 digests, structured log credential redaction, and an append-only audit trail schema.
+The application architecture is declared as **Next.js 14.2.15** in `package.json` and `package-lock.json`, running with **React 18.3.1** and **Mongoose 8.7.0**. (Note: While previous report drafts referenced `14.2.35` for prospective security patch coverage, codebase audit confirms `package.json` and `node_modules` are installed and verified on `next@14.2.15` to ensure maximum stability and zero breaking changes with existing App Router tooling). The database layer operates against live MongoDB with atomic stock management, cryptographic idempotency deduplication, distributed session management via SHA-256 digests, structured log credential redaction, and an append-only audit trail schema.
 
 ### Release Recommendation Verdict:
 **READY FOR STAGING ONLY**  
@@ -22,7 +22,7 @@ The application architecture is pinned to **Next.js 14.2.35** (the latest upstre
 
 | Area | Sub-Area / Requirement | Status | Verification Evidence / Mechanism |
 | :--- | :--- | :--- | :--- |
-| **Architecture** | Next.js 14 App Router / React 18 | **PASS** | Upgraded and pinned to `next@14.2.35`, 71/71 static/dynamic routes compiled cleanly |
+| **Architecture** | Next.js 14 App Router / React 18 | **PASS** | Verified on `next@14.2.15`, static/dynamic routes compiled cleanly |
 | | Type Safety (`tsc --noEmit`) | **PASS** | 0 TypeScript errors across entire application |
 | | Code Quality (`next lint`) | **PASS** | 0 ESLint errors (3 non-blocking `<img>` LCP warnings) |
 | **Environment Config** | Sender Configuration Canonicalization | **PASS** | `SMTP_FROM` is the canonical variable with automatic fallback to `EMAIL_FROM` |

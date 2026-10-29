@@ -42,14 +42,19 @@ function ConfirmationContent() {
   const searchParams = useSearchParams();
   const queryOrderId = searchParams.get("orderId");
 
-  const { currentOrder, orders, setCurrentOrder, updateOrderInStore, addToast } = useStore();
+  const { setCurrentOrder, updateOrderInStore, addToast } = useStore();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState<boolean>(false);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadOrder = useCallback(
     async (targetId: string) => {
+      setLoading(true);
+      setErrorStatus(null);
+      setErrorMessage(null);
       try {
         const res = await fetch(`/api/orders/${encodeURIComponent(targetId)}`);
         if (res.ok) {
@@ -62,29 +67,41 @@ function ConfirmationContent() {
             return;
           }
         }
+
+        if (res.status === 401) {
+          setErrorStatus(401);
+          setErrorMessage("Authentication required to view order confirmation. Please sign in to your account.");
+        } else if (res.status === 403) {
+          setErrorStatus(403);
+          setErrorMessage("Access denied. You do not have permission to view this order.");
+        } else if (res.status === 404) {
+          setErrorStatus(404);
+          setErrorMessage(`Order "${targetId}" could not be found on the server.`);
+        } else {
+          setErrorStatus(res.status);
+          setErrorMessage("Failed to load order from server.");
+        }
       } catch {
-        // Fallback to local store copy if offline
+        setErrorStatus(500);
+        setErrorMessage("Network error: Unable to connect to Grocerly server to verify order record.");
       }
 
-      const localMatch =
-        (currentOrder && currentOrder.id === targetId ? currentOrder : null) ||
-        orders.find((o) => o.id === targetId) ||
-        null;
-      setOrder(localMatch);
+      setOrder(null);
       setLoading(false);
     },
-    [currentOrder, orders, setCurrentOrder, updateOrderInStore]
+    [setCurrentOrder, updateOrderInStore]
   );
 
   useEffect(() => {
-    const resolvedId = queryOrderId || currentOrder?.id || orders[0]?.id;
-    if (!resolvedId) {
+    if (!queryOrderId) {
       setOrder(null);
+      setErrorStatus(400);
+      setErrorMessage("No order ID specified in request.");
       setLoading(false);
       return;
     }
-    loadOrder(resolvedId);
-  }, [queryOrderId, currentOrder?.id, orders, loadOrder]);
+    loadOrder(queryOrderId);
+  }, [queryOrderId, loadOrder]);
 
   useEffect(() => {
     if (order && (order.status === "CONFIRMED" || order.status === "DELIVERED")) {
@@ -164,27 +181,53 @@ function ConfirmationContent() {
     );
   }
 
-  // Honest Empty State — Never fabricate a fake order when none exists
+  // Honest Empty & Error State — Never fabricate a fake order when none exists or auth fails
   if (!order) {
+    const isAuthError = errorStatus === 401;
+    const isForbidden = errorStatus === 403;
+    const isNotFound = errorStatus === 404;
+
     return (
       <div className="pt-28 pb-20 max-w-2xl mx-auto px-4 sm:px-6 text-center">
         <div className="bg-white rounded-3xl border border-[rgba(22,60,41,0.08)] p-8 sm:p-12 shadow-xs space-y-5">
           <div className="w-16 h-16 rounded-2xl bg-[#F8F7F2] text-forest flex items-center justify-center mx-auto">
-            <ShoppingBag className="w-8 h-8" />
+            {isAuthError ? (
+              <AlertCircle className="w-8 h-8 text-amber-600" />
+            ) : isForbidden ? (
+              <XCircle className="w-8 h-8 text-red-600" />
+            ) : (
+              <ShoppingBag className="w-8 h-8" />
+            )}
           </div>
           <h1 className="font-heading font-black text-2xl sm:text-3xl text-ink">
-            No Order Found
+            {isAuthError
+              ? "Sign In Required"
+              : isForbidden
+              ? "Access Forbidden"
+              : isNotFound
+              ? "Order Not Found"
+              : "Unable to Load Order"}
           </h1>
           <p className="text-xs sm:text-sm text-ink-muted max-w-md mx-auto">
-            We could not find an active or matching order ID. Place a real order from our shop or check your account dashboard for past orders.
+            {errorMessage ||
+              "We could not find an active or matching order ID. Place a real order from our shop or check your account dashboard for past orders."}
           </p>
           <div className="pt-2 flex flex-wrap justify-center gap-3">
-            <Link
-              href="/shop"
-              className="px-6 py-3 rounded-full bg-[#163C29] hover:bg-[#1f5238] text-white font-bold text-xs shadow-xs transition-all"
-            >
-              Browse Fresh Produce →
-            </Link>
+            {isAuthError ? (
+              <Link
+                href={`/login?redirect=${encodeURIComponent(`/confirmation?orderId=${queryOrderId || ""}`)}`}
+                className="px-6 py-3 rounded-full bg-[#163C29] hover:bg-[#1f5238] text-white font-bold text-xs shadow-xs transition-all"
+              >
+                Sign In to View Order →
+              </Link>
+            ) : (
+              <Link
+                href="/shop"
+                className="px-6 py-3 rounded-full bg-[#163C29] hover:bg-[#1f5238] text-white font-bold text-xs shadow-xs transition-all"
+              >
+                Browse Fresh Produce →
+              </Link>
+            )}
             <Link
               href="/dashboard"
               className="px-6 py-3 rounded-full bg-[#F8F7F2] hover:bg-gray-200/70 text-ink font-bold text-xs transition-all"

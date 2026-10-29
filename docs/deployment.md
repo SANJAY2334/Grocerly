@@ -1,6 +1,6 @@
 # Grocerly — Production Deployment & Configuration Guide
 
-This guide details the procedure for deploying Grocerly to production environments using Vercel, Node.js standalone, Docker, or Kubernetes with MongoDB Atlas and transactional SMTP.
+> **Note**: For the comprehensive containerization and CI/CD pipeline guide, see [Deployment & CI/CD Specification](deployment-and-cicd.md).
 
 ---
 
@@ -9,7 +9,7 @@ This guide details the procedure for deploying Grocerly to production environmen
 - **Node.js**: v20.x LTS or higher
 - **Package Manager**: `npm` v10+
 - **Database**: MongoDB Atlas M0/M10+ cluster or compatible MongoDB 6.0+ instance
-- **Email Provider**: SMTP service (Amazon SES, SendGrid, Postmark, or Resend)
+- **Email Provider**: SMTP service (Amazon SES, SendGrid, Postmark, Mailgun, or standard SMTP server)
 - **Domain & SSL**: Valid domain with HTTPS / TLS termination
 
 ---
@@ -67,8 +67,8 @@ npx tsx scripts/seed.ts
 
 This ensures:
 - Unique indexes on `users.email`, `products.sku`, `products.slug`, `orders.idempotencyKey`.
-- Default store admin account: `admin@grocerly.in` (password: `Admin@1234`)
-- Fulfillment operations account: `ops@grocerly.in` (password: `Ops@12345`)
+- Default store admin account: `admin@grocerly.in` (reads `INITIAL_ADMIN_PASSWORD` from environment, or generates a secure random 16-byte hex password logged to console).
+- Fulfillment operations account: `ops@grocerly.in` (reads `INITIAL_OPS_PASSWORD` from environment, or generates a secure random 16-byte hex password logged to console).
 - Full catalog of organic vegetables, fruits, dairy, and staples populated into `products` collection.
 
 ---
