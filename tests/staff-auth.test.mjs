@@ -1,3 +1,9 @@
+import { POST as inventoryPost, DELETE as inventoryDelete } from "../app/api/admin/inventory/route.ts";
+import { DELETE as adminOrderDelete } from "../app/api/admin/orders/route.ts";
+import { ProductModel } from "../lib/models/Product.ts";
+import { CouponModel } from "../lib/models/Coupon.ts";
+import { OrderModel } from "../lib/models/Order.ts";
+import { fetchAdminOrders, fetchUserOrders } from "../lib/services/order.ts";
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
@@ -357,4 +363,205 @@ test("Staff Setup Route: Rate limiting strictly blocks abuse after 10 requests/m
   }
   assert.equal(wasRateLimited, true, "15 rapid requests must trigger HTTP 429 rate limit");
   resetRateLimits();
+});
+
+test("Admin Operations: Product creation with image URL and deletion", async () => {
+  await connectToDatabase();
+  delete process.env.GROCERLY_TEST_IN_MEMORY;
+  resetRateLimits();
+
+  // Create an admin session
+  await UserModel.findOneAndUpdate(
+    { email: "admin@grocerly.in" },
+    {
+      id: "usr-admin-01",
+      name: "Grocerly Store Admin",
+      email: "admin@grocerly.in",
+      role: "ADMIN",
+      verified: true,
+      status: "ACTIVE",
+      passwordHash: hashPassword("AdminDemoPass2026!"),
+    },
+    { upsert: true }
+  );
+  const adminSession = await createSession("usr-admin-01", "ADMIN");
+
+  // 1. Create a new product with image URL
+  const reqCreateProd = new Request("http://localhost:3000/api/admin/inventory", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      action: "CREATE_PRODUCT",
+      name: "Kashmiri Apples",
+      category: "Fruits",
+      price: 180,
+      originalPrice: 220,
+      stock: 45,
+      unit: "1 kg",
+      image: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6",
+      brand: "Himalayan Orchards",
+      description: "Crisp, sweet red apples directly from Kashmir.",
+      organic: true,
+    }),
+  });
+
+  const resCreateProd = await inventoryPost(reqCreateProd);
+  assert.equal(resCreateProd.status, 200, "Admin can create a product with image URL");
+  const dataCreateProd = await resCreateProd.json();
+  const createdProd = dataCreateProd.data?.product || dataCreateProd.product;
+  assert.ok(createdProd, "Created product should be returned");
+  assert.equal(createdProd.name, "Kashmiri Apples");
+  assert.equal(createdProd.image, "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6");
+
+  // Verify in MongoDB
+  const inDb = await ProductModel.findOne({ id: createdProd.id });
+  assert.ok(inDb, "Product must be persisted in database");
+  assert.equal(inDb.price, 180);
+
+  // 2. Delete the created product
+  const reqDelProd = new Request(`http://localhost:3000/api/admin/inventory?productId=${createdProd.id}`, {
+    method: "DELETE",
+    headers: {
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+  });
+
+  const resDelProd = await inventoryDelete(reqDelProd);
+  assert.equal(resDelProd.status, 200, "Admin can delete a product");
+
+  // Verify deletion from MongoDB
+  const inDbAfter = await ProductModel.findOne({ id: createdProd.id });
+  assert.equal(inDbAfter, null, "Product must be removed from database");
+});
+
+test("Admin Operations: Promotional coupon creation and deletion", async () => {
+  await connectToDatabase();
+  delete process.env.GROCERLY_TEST_IN_MEMORY;
+  resetRateLimits();
+
+  const adminSession = await createSession("usr-admin-01", "ADMIN");
+
+  // Clean test coupon
+  await CouponModel.deleteOne({ code: "FESTIVE50" });
+
+  // 1. Create coupon
+  const reqCreateCoupon = new Request("http://localhost:3000/api/admin/inventory", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      action: "CREATE_COUPON",
+      code: "FESTIVE50",
+      description: "Flat ₹50 off on festival orders",
+      discountType: "FLAT",
+      discountValue: 50,
+      minOrderSubtotal: 399,
+      expiresAt: new Date(Date.now() + 15 * 86400000).toISOString(),
+      usageLimit: 300,
+    }),
+  });
+
+  const resCreateCoupon = await inventoryPost(reqCreateCoupon);
+  assert.equal(resCreateCoupon.status, 200, "Admin can create a coupon");
+  const dataCoupon = await resCreateCoupon.json();
+  const createdCoupon = dataCoupon.data?.coupon || dataCoupon.coupon;
+  assert.equal(createdCoupon.code, "FESTIVE50");
+  assert.equal(createdCoupon.discountValue, 50);
+
+  // 2. Delete coupon
+  const reqDelCoupon = new Request(`http://localhost:3000/api/admin/inventory?code=FESTIVE50`, {
+    method: "DELETE",
+    headers: {
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+  });
+
+  const resDelCoupon = await inventoryDelete(reqDelCoupon);
+  assert.equal(resDelCoupon.status, 200, "Admin can delete a coupon");
+
+  const couponInDb = await CouponModel.findOne({ code: "FESTIVE50" });
+  assert.equal(couponInDb, null, "Coupon must be deleted from database");
+});
+
+test("Admin Operations: Removing DELIVERED / REFUNDED order hides from admin ledger but preserves customer history", async () => {
+  await connectToDatabase();
+  delete process.env.GROCERLY_TEST_IN_MEMORY;
+  resetRateLimits();
+
+  const adminSession = await createSession("usr-admin-01", "ADMIN");
+  const testCustomerId = "usr-cust-archive-test";
+
+  // Create two orders: one DELIVERED, one CONFIRMED (in-progress)
+  const deliveredOrderId = "ORD-TEST-DELIVERED-001";
+  const confirmedOrderId = "ORD-TEST-CONFIRMED-002";
+
+  await OrderModel.deleteMany({ id: { $in: [deliveredOrderId, confirmedOrderId] } });
+
+  await OrderModel.create({
+    id: deliveredOrderId,
+    userId: testCustomerId,
+    items: [{ productId: "fresh-tomatoes", name: "Fresh Tomatoes", brand: "Grocerly", unit: "1 kg", image: "/img.jpg", unitPrice: 40, quantity: 2, lineTotal: 80 }],
+    address: { fullName: "Test Buyer", phone: "9876543210", street: "MG Road", city: "Bengaluru", state: "Karnataka", pincode: "560001" },
+    deliverySlot: "Slot 1: 10:00 AM – 12:00 PM",
+    paymentMethod: "COD",
+    paymentStatus: "PAID",
+    total: 80,
+    pricing: { itemSubtotal: 80, finalPayable: 80 },
+    status: "DELIVERED",
+    archivedFromAdmin: false,
+  });
+
+  await OrderModel.create({
+    id: confirmedOrderId,
+    userId: testCustomerId,
+    items: [{ productId: "fresh-tomatoes", name: "Fresh Tomatoes", brand: "Grocerly", unit: "1 kg", image: "/img.jpg", unitPrice: 40, quantity: 1, lineTotal: 40 }],
+    address: { fullName: "Test Buyer", phone: "9876543210", street: "MG Road", city: "Bengaluru", state: "Karnataka", pincode: "560001" },
+    deliverySlot: "Slot 1: 10:00 AM – 12:00 PM",
+    paymentMethod: "COD",
+    paymentStatus: "PENDING",
+    total: 40,
+    pricing: { itemSubtotal: 40, finalPayable: 40 },
+    status: "CONFIRMED",
+    archivedFromAdmin: false,
+  });
+
+  // Verify before deletion: admin sees both
+  const adminOrdersBefore = await fetchAdminOrders();
+  assert.ok(adminOrdersBefore.some(o => o.id === deliveredOrderId), "Admin initially sees delivered order");
+  assert.ok(adminOrdersBefore.some(o => o.id === confirmedOrderId), "Admin sees confirmed order");
+
+  // Attempting to delete in-progress CONFIRMED order must be rejected with 400
+  const reqDelConfirmed = new Request(`http://localhost:3000/api/admin/orders?orderId=${confirmedOrderId}`, {
+    method: "DELETE",
+    headers: { "Cookie": `grocerly_session=${adminSession.sessionToken}` },
+  });
+  const resDelConfirmed = await adminOrderDelete(reqDelConfirmed);
+  assert.equal(resDelConfirmed.status, 400, "Non-terminal orders cannot be archived/removed from admin");
+
+  // Removing terminal DELIVERED order must succeed
+  const reqDelDelivered = new Request(`http://localhost:3000/api/admin/orders?orderId=${deliveredOrderId}`, {
+    method: "DELETE",
+    headers: { "Cookie": `grocerly_session=${adminSession.sessionToken}` },
+  });
+  const resDelDelivered = await adminOrderDelete(reqDelDelivered);
+  assert.equal(resDelDelivered.status, 200, "Removing DELIVERED order must succeed");
+
+  // Verify admin orders NO LONGER includes delivered order
+  const adminOrdersAfter = await fetchAdminOrders();
+  assert.equal(adminOrdersAfter.some(o => o.id === deliveredOrderId), false, "Delivered order must be removed from admin ledger");
+  assert.ok(adminOrdersAfter.some(o => o.id === confirmedOrderId), "Confirmed order remains in admin ledger");
+
+  // CRITICAL REQUIREMENT: User order history MUST STILL CONTAIN the order
+  const userOrders = await fetchUserOrders(testCustomerId);
+  assert.ok(userOrders.some(o => o.id === deliveredOrderId), "Customer dashboard history must still show the order");
+  assert.ok(userOrders.some(o => o.id === confirmedOrderId), "Customer dashboard history shows confirmed order");
 });

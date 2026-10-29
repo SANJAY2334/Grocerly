@@ -102,6 +102,8 @@ const OrderSchema = new Schema<IOrderDocument>(
     },
     timeline: { type: [TimelineEventSchema], default: [] },
     statusHistory: { type: [TimelineEventSchema], default: [] },
+    archivedFromAdmin: { type: Boolean, default: false, index: true },
+    deletedFromAdminAt: { type: Date },
   },
   {
     timestamps: true,

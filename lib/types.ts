@@ -187,6 +187,8 @@ export interface Order {
   pricing?: any;
   statusHistory?: any[];
   paymentReference?: string;
+  archivedFromAdmin?: boolean;
+  deletedFromAdminAt?: string | Date;
 }
 
 export interface Coupon {

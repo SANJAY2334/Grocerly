@@ -293,7 +293,9 @@ export async function fetchUserOrders(userId: string): Promise<Order[]> {
 export async function fetchAdminOrders(): Promise<Order[]> {
   await connectToDatabase();
 
-  const docs = await OrderModel.find().sort({ createdAt: -1 }).lean();
+  const docs = await OrderModel.find({ archivedFromAdmin: { $ne: true } })
+    .sort({ createdAt: -1 })
+    .lean();
   return docs as unknown as Order[];
 }
 
