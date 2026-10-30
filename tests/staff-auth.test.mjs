@@ -1,4 +1,4 @@
-import { POST as inventoryPost, DELETE as inventoryDelete } from "../app/api/admin/inventory/route.ts";
+import { POST as inventoryPost, DELETE as inventoryDelete, PATCH as inventoryPatch } from "../app/api/admin/inventory/route.ts";
 import { DELETE as adminOrderDelete } from "../app/api/admin/orders/route.ts";
 import { ProductModel } from "../lib/models/Product.ts";
 import { CouponModel } from "../lib/models/Coupon.ts";
@@ -564,4 +564,96 @@ test("Admin Operations: Removing DELIVERED / REFUNDED order hides from admin led
   const userOrders = await fetchUserOrders(testCustomerId);
   assert.ok(userOrders.some(o => o.id === deliveredOrderId), "Customer dashboard history must still show the order");
   assert.ok(userOrders.some(o => o.id === confirmedOrderId), "Customer dashboard history shows confirmed order");
+});
+
+test("Admin Operations: Price validation rejects zero, negative, out-of-range (>100,000) and MRP violations", async () => {
+  await connectToDatabase();
+  delete process.env.GROCERLY_TEST_IN_MEMORY;
+  resetRateLimits();
+
+  const adminSession = await createSession("usr-admin-01", "ADMIN");
+
+  // 1. Rejects astronomical price (like the 2,22,22... in bug report)
+  const reqAstronomical = new Request("http://localhost:3000/api/admin/inventory", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      action: "CREATE_PRODUCT",
+      name: "Wild Gold Berries",
+      category: "Fruits",
+      price: 2222222222222222222,
+      unit: "1 kg",
+      image: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6",
+    }),
+  });
+  const resAstronomical = await inventoryPost(reqAstronomical);
+  assert.equal(resAstronomical.status, 400, "Astronomical price must be rejected with 400");
+  const dataAstronomical = await resAstronomical.json();
+  const errMsg = dataAstronomical.error?.message || dataAstronomical.error || "";
+  assert.match(errMsg, /cannot exceed|positive/i);
+
+  // 2. Rejects negative or zero price
+  const reqZero = new Request("http://localhost:3000/api/admin/inventory", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      action: "CREATE_PRODUCT",
+      name: "Free Apples",
+      category: "Fruits",
+      price: 0,
+      unit: "1 kg",
+      image: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6",
+    }),
+  });
+  const resZero = await inventoryPost(reqZero);
+  assert.equal(resZero.status, 400, "Zero price must be rejected with 400");
+
+  // 3. Rejects MRP lower than selling price
+  const reqMrpLower = new Request("http://localhost:3000/api/admin/inventory", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      action: "CREATE_PRODUCT",
+      name: "Price Gouged Mangoes",
+      category: "Fruits",
+      price: 300,
+      originalPrice: 200,
+      unit: "1 kg",
+      image: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6",
+    }),
+  });
+  const resMrpLower = await inventoryPost(reqMrpLower);
+  assert.equal(resMrpLower.status, 400, "Selling price higher than MRP must be rejected with 400");
+
+  // 4. Rejects PATCH price update with astronomical price
+  const reqPatchExcessive = new Request("http://localhost:3000/api/admin/inventory", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "Origin": "http://localhost:3000",
+      "Host": "localhost:3000",
+      "Cookie": `grocerly_session=${adminSession.sessionToken}`,
+    },
+    body: JSON.stringify({
+      productId: "fresh-bananas",
+      price: 999999999,
+    }),
+  });
+  const resPatchExcessive = await inventoryPatch(reqPatchExcessive);
+  assert.equal(resPatchExcessive.status, 400, "PATCH with price > 100,000 must be rejected with 400");
 });

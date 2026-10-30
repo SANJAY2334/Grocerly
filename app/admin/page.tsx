@@ -176,6 +176,18 @@ export default function AdminPage() {
   const handleUpdateStock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
+
+    if (newPrice > 0) {
+      if (!Number.isFinite(newPrice) || newPrice < 0.5 || newPrice > 100000) {
+        addToast({
+          type: "error",
+          title: "Invalid Price",
+          message: "Price must be between ₹0.50 and ₹1,00,000.",
+        });
+        return;
+      }
+    }
+
     setUpdatingInventory(true);
 
     try {
@@ -234,6 +246,36 @@ export default function AdminPage() {
         message: "Product name, price, and image URL are required.",
       });
       return;
+    }
+
+    const priceNum = parseFloat(newProdPrice);
+    if (!Number.isFinite(priceNum) || priceNum < 0.5 || priceNum > 100000) {
+      addToast({
+        type: "error",
+        title: "Invalid Price",
+        message: "Selling price must be between ₹0.50 and ₹1,00,000.",
+      });
+      return;
+    }
+
+    if (newProdOriginalPrice.trim()) {
+      const origNum = parseFloat(newProdOriginalPrice);
+      if (!Number.isFinite(origNum) || origNum < 0.5 || origNum > 100000) {
+        addToast({
+          type: "error",
+          title: "Invalid MRP",
+          message: "Original price (MRP) must be between ₹0.50 and ₹1,00,000.",
+        });
+        return;
+      }
+      if (origNum < priceNum) {
+        addToast({
+          type: "error",
+          title: "Invalid MRP",
+          message: "Original price (MRP) cannot be less than selling price.",
+        });
+        return;
+      }
     }
 
     setAddingProduct(true);
@@ -1216,7 +1258,8 @@ export default function AdminPage() {
                   <input
                     type="number"
                     step="0.5"
-                    min="1"
+                    min="0.5"
+                    max="100000"
                     required
                     placeholder="e.g. 45"
                     value={newProdPrice}
@@ -1230,7 +1273,8 @@ export default function AdminPage() {
                   <input
                     type="number"
                     step="0.5"
-                    min="1"
+                    min="0.5"
+                    max="100000"
                     placeholder="e.g. 60 (Optional)"
                     value={newProdOriginalPrice}
                     onChange={(e) => setNewProdOriginalPrice(e.target.value)}
@@ -1535,8 +1579,9 @@ export default function AdminPage() {
                 </label>
                 <input
                   type="number"
-                  step="1"
-                  min="1"
+                  step="0.5"
+                  min="0.5"
+                  max="100000"
                   value={newPrice}
                   onChange={(e) => setNewPrice(parseFloat(e.target.value) || 0)}
                   className="w-full bg-[#F8F7F2] px-3 py-2 rounded-xl border border-black/10 text-xs font-bold focus:outline-none"

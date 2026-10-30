@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Product } from "@/lib/types";
 import { Boxes, ArrowLeft, AlertCircle, Edit2, Search } from "lucide-react";
 import { useStore } from "@/lib/store";
+import { formatCurrency } from "@/lib/utils";
 
 export default function AdminProductsPage() {
   const router = useRouter();
@@ -46,6 +47,25 @@ export default function AdminProductsPage() {
   }, [loadProducts]);
 
   const handleUpdate = async (product: Product) => {
+    const targetPrice = newPrice || product.price;
+    if (!Number.isFinite(targetPrice) || targetPrice < 0.5 || targetPrice > 100000) {
+      addToast({
+        type: "error",
+        title: "Invalid Price",
+        message: "Price must be between ₹0.50 and ₹1,00,000.",
+      });
+      return;
+    }
+
+    if (!Number.isFinite(newStock) || newStock < 0 || newStock > 100000) {
+      addToast({
+        type: "error",
+        title: "Invalid Stock",
+        message: "Stock must be between 0 and 1,00,000 units.",
+      });
+      return;
+    }
+
     try {
       const res = await fetch("/api/admin/inventory", {
         method: "PATCH",
@@ -167,18 +187,24 @@ export default function AdminProductsPage() {
                         {isEditing ? (
                           <input
                             type="number"
+                            step="0.5"
+                            min="0.5"
+                            max="100000"
                             value={newPrice}
                             onChange={(e) => setNewPrice(Number(e.target.value))}
                             className="w-20 px-2 py-1 rounded-lg border border-black/10 text-xs font-bold"
                           />
                         ) : (
-                          <span className="font-bold text-[#163C29]">₹{prod.price}</span>
+                          <span className="font-bold text-[#163C29]">{formatCurrency(prod.price)}</span>
                         )}
                       </td>
                       <td className="py-3.5 px-4">
                         {isEditing ? (
                           <input
                             type="number"
+                            step="1"
+                            min="0"
+                            max="100000"
                             value={newStock}
                             onChange={(e) => setNewStock(Number(e.target.value))}
                             className="w-20 px-2 py-1 rounded-lg border border-black/10 text-xs font-bold"

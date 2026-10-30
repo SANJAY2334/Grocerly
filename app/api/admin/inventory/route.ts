@@ -5,7 +5,7 @@ import { OrderModel } from "@/lib/models/Order";
 import { CouponModel } from "@/lib/models/Coupon";
 import { connectToDatabase } from "@/lib/db/connection";
 import { logAuditEvent } from "@/lib/logging";
-import { sanitizeString, hasMaliciousKeys } from "@/lib/validation";
+import { sanitizeString, hasMaliciousKeys, validatePrice, validateProductPricing } from "@/lib/validation";
 import {
   createErrorResponse,
   createSuccessResponse,
@@ -81,21 +81,23 @@ export async function POST(req: Request) {
       const image = sanitizeString(body.image, 500);
       const brand = sanitizeString(body.brand || "Grocerly Fresh", 80);
       const description = sanitizeString(body.description || "", 500);
-      const price = Number(body.price);
       const stock = Number(body.stock ?? 10);
-      const originalPrice = body.originalPrice ? Number(body.originalPrice) : price;
       const organic = Boolean(body.organic);
 
       if (!name || name.trim().length < 2) {
         throw new ValidationError("Product name must be at least 2 characters long.");
       }
-      if (!price || Number.isNaN(price) || price <= 0) {
-        throw new ValidationError("Product price must be a positive number.");
+
+      const pricingCheck = validateProductPricing(body.price, body.originalPrice);
+      if (!pricingCheck.valid) {
+        throw new ValidationError(pricingCheck.error || "Invalid product pricing.");
       }
-      if (Number.isNaN(stock) || stock < 0) {
-        throw new ValidationError("Product stock must be a non-negative number.");
+      const { price, originalPrice, discount } = pricingCheck;
+
+      if (!Number.isFinite(stock) || Number.isNaN(stock) || stock < 0 || stock > 100000) {
+        throw new ValidationError("Product stock must be a non-negative number up to 100,000.");
       }
-      if (!image || !image.startsWith("http") && !image.startsWith("/")) {
+      if (!image || (!image.startsWith("http") && !image.startsWith("/"))) {
         throw new ValidationError("A valid product image URL (http/https or relative path) is required.");
       }
 
@@ -114,7 +116,7 @@ export async function POST(req: Request) {
         category,
         price,
         originalPrice,
-        discount: Math.max(0, originalPrice - price),
+        discount,
         unit,
         packSize: 1,
         image: image.trim(),
@@ -358,23 +360,40 @@ export async function PATCH(req: Request) {
     const updates: Record<string, unknown> = {};
     if (body.stock !== undefined) {
       const s = Number(body.stock);
-      if (Number.isNaN(s) || s < 0) {
-        return NextResponse.json({ error: "Stock must be a non-negative number." }, { status: 400 });
+      if (!Number.isFinite(s) || Number.isNaN(s) || s < 0 || s > 100000) {
+        return NextResponse.json(
+          { error: "Stock must be a non-negative number up to 100,000." },
+          { status: 400 }
+        );
       }
-      updates.stock = s;
+      updates.stock = Math.round(s);
     }
     if (body.price !== undefined) {
-      const p = Number(body.price);
-      if (Number.isNaN(p) || p <= 0) {
-        return NextResponse.json({ error: "Price must be a positive number." }, { status: 400 });
+      const priceCheck = validatePrice(body.price, "Price");
+      if (!priceCheck.valid) {
+        return NextResponse.json({ error: priceCheck.error }, { status: 400 });
       }
-      updates.price = p;
+      updates.price = priceCheck.value;
     }
     if (body.originalPrice !== undefined) {
-      const op = Number(body.originalPrice);
-      if (!Number.isNaN(op) && op > 0) {
-        updates.originalPrice = op;
+      const origCheck = validatePrice(body.originalPrice, "Original price (MRP)");
+      if (!origCheck.valid) {
+        return NextResponse.json({ error: origCheck.error }, { status: 400 });
       }
+      updates.originalPrice = origCheck.value;
+    }
+
+    if (updates.price !== undefined && updates.originalPrice !== undefined) {
+      if ((updates.originalPrice as number) < (updates.price as number)) {
+        return NextResponse.json(
+          { error: "Original price (MRP) cannot be less than selling price." },
+          { status: 400 }
+        );
+      }
+      updates.discount = Math.max(
+        0,
+        Math.round(((updates.originalPrice as number) - (updates.price as number)) * 100) / 100
+      );
     }
 
     const updatedProduct = await ProductModel.findOneAndUpdate(

@@ -37,6 +37,92 @@ export function hasMaliciousKeys(obj: unknown): boolean {
   return false;
 }
 
+export const MIN_PRODUCT_PRICE = 0.5;
+export const MAX_PRODUCT_PRICE = 100000;
+
+export interface PriceValidationResult {
+  valid: boolean;
+  value: number;
+  error?: string;
+}
+
+export function validatePrice(val: unknown, fieldName = "Price"): PriceValidationResult {
+  if (val === undefined || val === null || val === "") {
+    return { valid: false, value: 0, error: `${fieldName} is required.` };
+  }
+  const num = typeof val === "number" ? val : Number(val);
+  if (!Number.isFinite(num) || Number.isNaN(num)) {
+    return { valid: false, value: 0, error: `${fieldName} must be a valid number.` };
+  }
+  if (num < MIN_PRODUCT_PRICE) {
+    return {
+      valid: false,
+      value: num,
+      error: `${fieldName} must be at least ₹${MIN_PRODUCT_PRICE}.`,
+    };
+  }
+  if (num > MAX_PRODUCT_PRICE) {
+    return {
+      valid: false,
+      value: num,
+      error: `${fieldName} cannot exceed ₹${MAX_PRODUCT_PRICE.toLocaleString("en-IN")}.`,
+    };
+  }
+  const rounded = Math.round(num * 100) / 100;
+  return { valid: true, value: rounded };
+}
+
+export interface ProductPricingValidationResult {
+  valid: boolean;
+  price: number;
+  originalPrice: number;
+  discount: number;
+  error?: string;
+}
+
+export function validateProductPricing(
+  price: unknown,
+  originalPrice?: unknown
+): ProductPricingValidationResult {
+  const priceCheck = validatePrice(price, "Selling price");
+  if (!priceCheck.valid) {
+    return { valid: false, price: 0, originalPrice: 0, discount: 0, error: priceCheck.error };
+  }
+
+  let finalOriginalPrice = priceCheck.value;
+  if (originalPrice !== undefined && originalPrice !== null && originalPrice !== "") {
+    const origCheck = validatePrice(originalPrice, "Original price (MRP)");
+    if (!origCheck.valid) {
+      return {
+        valid: false,
+        price: priceCheck.value,
+        originalPrice: 0,
+        discount: 0,
+        error: origCheck.error,
+      };
+    }
+    if (origCheck.value < priceCheck.value) {
+      return {
+        valid: false,
+        price: priceCheck.value,
+        originalPrice: origCheck.value,
+        discount: 0,
+        error: "Original price (MRP) cannot be less than selling price.",
+      };
+    }
+    finalOriginalPrice = origCheck.value;
+  }
+
+  const discount = Math.max(0, Math.round((finalOriginalPrice - priceCheck.value) * 100) / 100);
+
+  return {
+    valid: true,
+    price: priceCheck.value,
+    originalPrice: finalOriginalPrice,
+    discount,
+  };
+}
+
 export function validateDeliveryAddress(
   raw: unknown
 ): { valid: boolean; data?: DeliveryAddress; errors: string[] } {
